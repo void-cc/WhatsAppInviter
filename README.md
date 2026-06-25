@@ -70,7 +70,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-### Exe bouwen
+### Windows exe bouwen
 
 Dubbelklik op `build.bat` of voer uit in de projectmap:
 
@@ -85,6 +85,44 @@ De build-script:
 2. Installeert alle dependencies
 3. Bouwt één standalone `.exe` met PyInstaller
 
+### macOS app bouwen
+
+> PyInstaller kan **niet** cross-compileren. Een macOS-build moet op een Mac gebeuren (niet op Windows).
+
+Op een Mac, in de projectmap:
+
+```bash
+chmod +x build_mac.sh
+./build_mac.sh
+```
+
+Output: `dist/WhatsAppInviter.app`
+
+Distribueren als zip:
+
+```bash
+ditto -c -k --keepParent dist/WhatsAppInviter.app dist/WhatsAppInviter-mac.zip
+```
+
+macOS-aandachtspunten:
+- **Gatekeeper:** ongetekende apps geven "kan niet worden geopend omdat het van een niet-geïdentificeerde ontwikkelaar is". Eerste keer: rechtsklik op de app → **Open** → **Open**. (Officieel ondertekenen vereist een Apple Developer-account; buiten scope.)
+- **Rechten:** macOS vraagt om **Toegankelijkheid** en **Schermopname** (Systeeminstellingen → Privacy en beveiliging), omdat de app de browser bestuurt.
+- De build is voor de architectuur van de Mac waarop je bouwt (Apple Silicon arm64 of Intel x86_64).
+
+### Automatisch bouwen via GitHub Actions
+
+Het project bevat een workflow (`.github/workflows/build.yml`) die bij elke push naar `master`/`main` automatisch **zowel de Windows `.exe` als de macOS `.app`** bouwt:
+
+- Resultaten staan onder het **Actions**-tabblad → de betreffende run → **Artifacts**.
+- Bij het pushen van een versietag (bijv. `v1.0.0`) wordt automatisch een **GitHub Release** aangemaakt met beide bestanden eraan gekoppeld:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Zo kun je een Mac-binary maken zonder zelf een Mac te hebben.
+
 ### Projectstructuur
 
 ```
@@ -97,8 +135,10 @@ core/
 assets/
   default_message.txt   # Standaard uitnodigingstekst
 main.py                 # Oud console-script (legacy)
-build.bat               # Eén-klik build
-app.spec                # PyInstaller configuratie
+build.bat               # Eén-klik build (Windows)
+build_mac.sh            # Eén-klik build (macOS)
+app.spec                # PyInstaller configuratie (Windows + macOS)
+.github/workflows/build.yml  # Automatische builds (Windows + macOS)
 requirements.txt
 ```
 
@@ -109,5 +149,5 @@ requirements.txt
 - Alleen `.xlsx` wordt ondersteund (geen `.csv` in de GUI; het oude `main.py` ondersteunt nog wel CSV).
 
 ### Oude script
-
-Het originele console-script staat nog in `main.py` voor referentie. Gebruik `app.py` / `WhatsAppInviter.exe` voor dagelijks gebruik.
+Het oude script is te vinden in de SA teams map van BI
+Gebruik `app.py` / `WhatsAppInviter.exe` voor dagelijks gebruik.
