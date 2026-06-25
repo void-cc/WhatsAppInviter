@@ -1,6 +1,6 @@
 # WhatsApp Inviter
 
-Een gebruiksvriendelijke Windows-app om ingeschreven studenten uit te nodigen via WhatsApp. Ontwikkeld voor Bio-informatica en Biomedical Research aan de Hogeschool Leiden.
+Een gebruiksvriendelijke Windows-app om ingeschreven studenten uit te nodigen via WhatsApp. Ontwikkeld voor Bio-informatica en Biomedis aan de Hogeschool Leiden.
 
 ## Voor eindgebruikers (BM-studenten / medewerkers)
 
@@ -21,7 +21,7 @@ WhatsAppInviter.exe
 
 Dubbelklik om te starten.
 
-> **Windows SmartScreen-waarschuwing:** Omdat het programma niet digitaal ondertekend is, kan Windows vragen "Windows heeft je pc beschermd". Klik op **Meer info** → **Toch uitvoeren**. Dit is normaal voor interne tools.
+> **Windows SmartScreen-waarschuwing:** Omdat het programma niet digitaal ondertekend is, kan Windows vragen "Windows heeft je pc beschermd". Klik op **Meer info** en dan **Toch uitvoeren**. Dit is normaal voor interne tools.
 
 ### Eenmalig: WhatsApp Web inloggen
 
@@ -113,15 +113,8 @@ macOS-aandachtspunten:
 
 Het project bevat een workflow (`.github/workflows/build.yml`) die bij elke push naar `master`/`main` automatisch **zowel de Windows `.exe` als de macOS `.app`** bouwt:
 
-- Resultaten staan onder het **Actions**-tabblad → de betreffende run → **Artifacts**.
-- Bij het pushen van een versietag (bijv. `v1.0.0`) wordt automatisch een **GitHub Release** aangemaakt met beide bestanden eraan gekoppeld:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-Zo kun je een Mac-binary maken zonder zelf een Mac te hebben.
+- Resultaten staan onder het **Actions**-tabblad, de betreffende run **Artifacts**.
+- Bij het pushen van een versietag (bijv. `v1.0.0`) wordt automatisch een **GitHub Release** aangemaakt met beide bestanden eraan gekoppeld
 
 ### Projectstructuur
 
@@ -134,7 +127,6 @@ core/
   settings.py           # Instellingen opslaan in AppData
 assets/
   default_message.txt   # Standaard uitnodigingstekst
-main.py                 # Oud console-script (legacy)
 build.bat               # Eén-klik build (Windows)
 build_mac.sh            # Eén-klik build (macOS)
 app.spec                # PyInstaller configuratie (Windows + macOS)
@@ -150,4 +142,5 @@ requirements.txt
 
 ### Oude script
 Het oude script is te vinden in de SA teams map van BI
+
 Gebruik `app.py` / `WhatsAppInviter.exe` voor dagelijks gebruik.
