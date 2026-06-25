@@ -136,19 +136,33 @@ class WhatsAppInviterApp(ctk.CTk):
             wraplength=800,
         ).grid(row=1, column=0, columnspan=4, padx=12, pady=4, sticky="w")
 
-        ctk.CTkLabel(step4, text="Wachttijd (sec):").grid(row=2, column=0, padx=12, pady=8, sticky="w")
+        options_frame = ctk.CTkFrame(step4, fg_color="transparent")
+        options_frame.grid(row=2, column=0, columnspan=4, padx=12, pady=8, sticky="w")
+
+        ctk.CTkLabel(options_frame, text="Wachttijd (sec):").pack(side="left", padx=(0, 4))
         self.wait_time_var = ctk.StringVar(value="15")
-        ctk.CTkEntry(step4, textvariable=self.wait_time_var, width=60).grid(row=2, column=1, padx=4, pady=8, sticky="w")
+        ctk.CTkEntry(options_frame, textvariable=self.wait_time_var, width=60).pack(side="left", padx=(0, 16))
 
         self.confirm_each_var = ctk.BooleanVar(value=True)
         ctk.CTkCheckBox(
-            step4,
+            options_frame,
             text="Bevestig na elk bericht",
             variable=self.confirm_each_var,
-        ).grid(row=2, column=2, padx=12, pady=8, sticky="w")
+        ).pack(side="left", padx=(0, 16))
+
+        start_frame = ctk.CTkFrame(step4, fg_color="transparent")
+        start_frame.grid(row=3, column=0, columnspan=4, padx=12, pady=(0, 8), sticky="w")
+
+        ctk.CTkLabel(start_frame, text="Start vanaf:").pack(side="left", padx=(0, 4))
+        self.start_var = ctk.StringVar(value="")
+        self.start_combo = ctk.CTkComboBox(
+            start_frame, variable=self.start_var, values=["(begin)"], width=420
+        )
+        self.start_combo.pack(side="left", padx=(0, 8))
+        ctk.CTkButton(start_frame, text="Begin", width=70, command=self._reset_start).pack(side="left")
 
         btn_row = ctk.CTkFrame(step4, fg_color="transparent")
-        btn_row.grid(row=3, column=0, columnspan=4, padx=12, pady=(4, 12), sticky="w")
+        btn_row.grid(row=4, column=0, columnspan=4, padx=12, pady=(4, 12), sticky="w")
 
         self.send_btn = ctk.CTkButton(btn_row, text="Start versturen", command=self._start_sending, width=140)
         self.send_btn.pack(side="left", padx=(0, 8))
@@ -268,6 +282,31 @@ class WhatsAppInviterApp(ctk.CTk):
         self.contact_count_label.configure(
             text=f"{len(self.contacts)} geldige telefoonnummers gevonden"
         )
+        self._refresh_start_options()
+
+    def _contact_label(self, position: int, contact) -> str:
+        return f"{position} - {contact.name} ({contact.phone_normalized}) - Excel-rij {contact.row_index}"
+
+    def _refresh_start_options(self) -> None:
+        labels = ["(begin)"] + [
+            self._contact_label(i + 1, c) for i, c in enumerate(self.contacts)
+        ]
+        self.start_combo.configure(values=labels)
+        self.start_var.set("(begin)")
+
+    def _reset_start(self) -> None:
+        self.start_var.set("(begin)")
+
+    def _resolve_start_index(self) -> int:
+        """Return the 0-based index in self.contacts to start from."""
+        selected = self.start_var.get().strip()
+        if not selected or selected == "(begin)":
+            return 0
+        try:
+            position = int(selected.split(" - ", 1)[0])
+        except (ValueError, IndexError):
+            return 0
+        return max(0, min(position - 1, len(self.contacts) - 1))
 
     def _save_message_default(self) -> None:
         self.settings["message"] = self.message_box.get("1.0", "end").strip()
@@ -303,9 +342,24 @@ class WhatsAppInviterApp(ctk.CTk):
             messagebox.showwarning("Ongeldige wachttijd", "Wachttijd moet minimaal 5 seconden zijn.")
             return
 
+        start_index = self._resolve_start_index()
+        contacts_to_send = self.contacts[start_index:]
+        if not contacts_to_send:
+            messagebox.showwarning("Geen contacten", "Er zijn geen contacten vanaf het gekozen startpunt.")
+            return
+
+        first = contacts_to_send[0]
+        if start_index > 0:
+            start_note = (
+                f"\n\nStarten vanaf #{start_index + 1}: {first.name} "
+                f"({first.phone_normalized}, Excel-rij {first.row_index})."
+            )
+        else:
+            start_note = ""
+
         if not messagebox.askyesno(
             "Bevestigen",
-            f"Weet je zeker dat je {len(self.contacts)} berichten wilt versturen?\n\n"
+            f"Weet je zeker dat je {len(contacts_to_send)} berichten wilt versturen?{start_note}\n\n"
             "Zorg dat WhatsApp Web open en ingelogd is.",
         ):
             return
@@ -316,9 +370,12 @@ class WhatsAppInviterApp(ctk.CTk):
         self.send_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.continue_btn.configure(state="disabled")
-        self._log("--- Start versturen ---")
+        if start_index > 0:
+            self._log(f"--- Start versturen (vanaf #{start_index + 1}, {first.name}) ---")
+        else:
+            self._log("--- Start versturen ---")
 
-        self.sender.start(self.contacts, message)
+        self.sender.start(contacts_to_send, message)
 
     def _stop_sending(self) -> None:
         self.sender.stop()
