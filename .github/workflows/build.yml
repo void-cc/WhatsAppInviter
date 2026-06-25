@@ -31,7 +31,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: WhatsAppInviter-windows
-          path: dist/WhatsAppInviter.exe
+          path: dist/WhatsAppInviter-windows.exe
 
   build-macos:
     runs-on: macos-latest
@@ -52,13 +52,13 @@ jobs:
         run: pyinstaller app.spec --noconfirm
 
       - name: Zip .app bundle
-        run: ditto -c -k --keepParent dist/WhatsAppInviter.app dist/WhatsAppInviter-mac.zip
+        run: ditto -c -k --keepParent dist/WhatsAppInviter.app dist/WhatsAppInviter-macOS.zip
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: WhatsAppInviter-macos
-          path: dist/WhatsAppInviter-mac.zip
+          path: dist/WhatsAppInviter-macOS.zip
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -83,5 +83,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/WhatsAppInviter.exe
-            artifacts/WhatsAppInviter-mac.zip
+            artifacts/WhatsAppInviter-windows.exe
+            artifacts/WhatsAppInviter-macOS.zip
