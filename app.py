@@ -49,7 +49,7 @@ class WhatsAppInviterApp(ctk.CTk):
         step1.grid(row=0, column=0, padx=16, pady=(16, 8), sticky="ew")
         step1.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(step1, text="1. Excel-bestand", font=ctk.CTkFont(size=16, weight="bold")).grid(
+        ctk.CTkLabel(step1, text="Excel-bestand", font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0, column=0, columnspan=3, padx=12, pady=(12, 8), sticky="w"
         )
 
@@ -67,12 +67,12 @@ class WhatsAppInviterApp(ctk.CTk):
         )
         self.sheet_menu.grid(row=2, column=1, columnspan=2, padx=12, pady=8, sticky="w")
 
-        # --- Step 2: Columns ---
+        # --- Columns ---
         step2 = ctk.CTkFrame(self)
         step2.grid(row=1, column=0, padx=16, pady=8, sticky="ew")
         step2.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(step2, text="2. Kolommen", font=ctk.CTkFont(size=16, weight="bold")).grid(
+        ctk.CTkLabel(step2, text="Kolommen", font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0, column=0, columnspan=2, padx=12, pady=(12, 8), sticky="w"
         )
 
@@ -103,7 +103,7 @@ class WhatsAppInviterApp(ctk.CTk):
         header3.grid(row=0, column=0, padx=12, pady=(12, 4), sticky="ew")
         header3.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(header3, text="3. Bericht", font=ctk.CTkFont(size=16, weight="bold")).grid(
+        ctk.CTkLabel(header3, text="Bericht", font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0, column=0, sticky="w"
         )
         ctk.CTkButton(header3, text="Opslaan als standaard", width=160, command=self._save_message_default).grid(
@@ -125,7 +125,7 @@ class WhatsAppInviterApp(ctk.CTk):
         step4 = ctk.CTkFrame(self)
         step4.grid(row=3, column=0, padx=16, pady=8, sticky="ew")
 
-        ctk.CTkLabel(step4, text="4. Versturen", font=ctk.CTkFont(size=16, weight="bold")).grid(
+        ctk.CTkLabel(step4, text="Versturen", font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0, column=0, columnspan=4, padx=12, pady=(12, 8), sticky="w"
         )
 
