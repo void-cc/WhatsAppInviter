@@ -13,11 +13,7 @@ Een gebruiksvriendelijke Windows-app om ingeschreven studenten uit te nodigen vi
 
 ### Installatie
 
-**Geen installatie nodig.** Je ontvangt één bestand:
-
-```
-WhatsAppInviter.exe
-```
+Download vanuit de laatste releases [Latest release](https://github.com/void-cc/WhatsAppInviter/releases/latest) WhatsAppInviter.exe voor windows of .zip voor macOS gebruikers
 
 Dubbelklik om te starten.
 
@@ -25,7 +21,7 @@ Dubbelklik om te starten.
 
 ### Eenmalig: WhatsApp Web inloggen
 
-1. Open Chrome of Edge
+1. Open Chrome
 2. Ga naar [web.whatsapp.com](https://web.whatsapp.com)
 3. Scan de QR-code met je telefoon
 4. Laat de browser open (of zorg dat je de volgende keer weer ingelogd bent)
@@ -33,14 +29,15 @@ Dubbelklik om te starten.
 ### Gebruik
 
 1. **Start** `WhatsAppInviter.exe`
-2. **Kies Excel-bestand** – selecteer je `.xlsx` export (bijv. uit SANAAM)
-3. **Kies werkblad** – als het bestand meerdere tabbladen heeft
+2. **Kies Excel-bestand** – selecteer je `.xlsx` export met studententelefoonnummers
+3. **Kies werkblad** – als het bestand meerdere tabbladen heeft kies het juiste sheet
 4. **Controleer kolommen** – de telefoonkolom wordt automatisch herkend; pas aan indien nodig
 5. **Pas het bericht aan** – bewerk de uitnodigingstekst naar wens
 6. Klik **Opslaan als standaard** om je bericht en instellingen te bewaren voor volgende keren
-7. Klik **Start versturen**
-8. De app opent WhatsApp Web per student en verstuurt het bericht
-9. Met **Bevestig na elk bericht** aan: klik **Volgende** om door te gaan, of **Stop** om te stoppen
+7. Optioneel: Start vanaf een andere rij als je met andere SA's de studenten heb verdeeld. (of later verder gaat)
+8. Klik **Start versturen**
+9. De app opent WhatsApp Web per student en verstuurt het bericht
+10. Met **Bevestig na elk bericht** aan: klik **Volgende** om door te gaan, of **Stop** om te stoppen
 
 ### Excel-formaat
 
