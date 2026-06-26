@@ -36,11 +36,33 @@ Dubbelklik om te starten.
 2. **Kies Excel-bestand** – selecteer je `.xlsx` export (bijv. uit SANAAM)
 3. **Kies werkblad** – als het bestand meerdere tabbladen heeft
 4. **Controleer kolommen** – de telefoonkolom wordt automatisch herkend; pas aan indien nodig
-5. **Pas het bericht aan** – bewerk de uitnodigingstekst naar wens
+5. **Pas het bericht aan** – bewerk de uitnodigingstekst naar wens. Gebruik `{voornaam}` of `{naam}` om het bericht per student te personaliseren; onder het tekstvak zie je live een **voorbeeld**.
 6. Klik **Opslaan als standaard** om je bericht en instellingen te bewaren voor volgende keren
 7. Klik **Start versturen**
 8. De app opent WhatsApp Web per student en verstuurt het bericht
 9. Met **Bevestig na elk bericht** aan: klik **Volgende** om door te gaan, of **Stop** om te stoppen
+10. Na afloop kun je met **Exporteer rapport** een CSV opslaan met wie er is aangeschreven (verzonden/mislukt).
+
+> **Thema:** rechtsboven kun je wisselen tussen **Licht**, **Donker** en **Systeem**. Je keuze wordt bewaard via *Opslaan als standaard*.
+
+### Bijhouden wie al een bericht kreeg (checkbox-kolom)
+
+Heb je in je Excel een kolom als **"Bericht verzonden"** (bijvoorbeeld met Excel-vinkjes / checkboxes, die `TRUE`/`FALSE` opslaan)? Dan kun je die gebruiken:
+
+1. Kies bij **Kolommen** de **Verzonden-kolom** (wordt automatisch herkend op namen als *bericht verzonden*, *verstuurd*, *uitgenodigd*, *sent*).
+2. **Sla al verzonden over** (aan): rijen die al aangevinkt zijn (`TRUE`/`ja`/`x`/`1`) worden niet opnieuw aangeschreven. Het aantal "nog te versturen" zie je direct.
+3. **Vink af in Excel na verzenden** (aan): na afloop zet de app de checkbox op `TRUE` voor iedereen die zojuist een bericht kreeg, zodat je de volgende keer verder kunt waar je was.
+
+> Sluit het Excel-bestand in Excel voordat je verstuurt; anders kan de app de vinkjes niet terugschrijven (het bestand is dan vergrendeld). De app waarschuwt je in dat geval.
+
+### Bericht personaliseren
+
+| Placeholder  | Wordt vervangen door                              |
+| ------------ | ------------------------------------------------- |
+| `{voornaam}` | De voornaam van de student (eerste woord van de naam) |
+| `{naam}`     | De volledige naam zoals in de naamkolom           |
+
+Heeft een rij geen naam, dan wordt "student" ingevuld. Werkt hoofdletterongevoelig (`{Voornaam}` mag ook).
 
 ### Excel-formaat
 
@@ -123,8 +145,10 @@ app.py                  # GUI (customtkinter)
 core/
   excel_loader.py       # Excel inlezen, kolommen detecteren
   phone.py              # Telefoonnummer normalisatie
+  message.py            # Berichtpersonalisatie ({voornaam}/{naam})
   sender.py             # WhatsApp versturen via pywhatkit
   settings.py           # Instellingen opslaan in AppData
+  report.py             # CSV-rapport van verzendresultaten
 assets/
   default_message.txt   # Standaard uitnodigingstekst
 build.bat               # Eén-klik build (Windows)

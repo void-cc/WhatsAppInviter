@@ -37,7 +37,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "confirm_each": True,
     "phone_column": "",
     "name_column": "",
+    "sent_column": "",
     "last_sheet": "",
+    "appearance": "Systeem",
+    "skip_sent": True,
+    "mark_sent": True,
 }
 
 
