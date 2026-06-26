@@ -117,10 +117,12 @@ def load_sheet_table(path: str | Path, sheet_name: str) -> SheetTable:
         raise ValueError("Could not detect a table header in this sheet.")
 
     headers: list[str] = []
+    header_columns: list[int] = []
     for col in range(1, (sheet.max_column or 1) + 1):
         val = _cell_value(sheet.cell(row=header_row, column=col).value)
         if val:
             headers.append(val)
+            header_columns.append(col)
 
     if not headers:
         wb.close()
@@ -131,7 +133,7 @@ def load_sheet_table(path: str | Path, sheet_name: str) -> SheetTable:
     for row_idx in range(header_row + 1, (sheet.max_row or header_row) + 1):
         row_data: dict[str, str] = {}
         has_data = False
-        for col_idx, header in enumerate(headers, start=1):
+        for header, col_idx in zip(headers, header_columns):
             val = _cell_value(sheet.cell(row=row_idx, column=col_idx).value)
             row_data[header] = val
             if val:
