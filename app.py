@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import math
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
-from typing import Optional
+from typing import Callable, Optional
 
 import customtkinter as ctk
 
@@ -33,21 +35,43 @@ ctk.set_default_color_theme("green")
 BG = ("#F5F4F0", "#15191A")
 SURFACE = ("#FBFAF7", "#1B201F")
 INSET = ("#EDEBE5", "#242A28")
-INK = ("#262A27", "#E6E8E4")
-INK_SOFT = ("#4C514D", "#BEC3BE")
-MUTED = ("#80847F", "#888E88")
-FAINT = ("#ABAEA8", "#565C58")
+INK = ("#232724", "#E6E8E4")
+INK_SOFT = ("#3F443F", "#BEC3BE")
+MUTED = ("#5C615B", "#888E88")
+FAINT = ("#6E736C", "#565C58")
 HAIRLINE = ("#E5E3DC", "#272D2A")
-ACCENT = ("#3A7D5C", "#54A37C")
-ACCENT_HOVER = ("#316b4e", "#62b389")
+ACCENT = ("#2F6E4F", "#54A37C")
+ACCENT_HOVER = ("#296044", "#62b389")
 ACCENT_SOFT = ("#E7EFE9", "#1F2D27")
-WARN = ("#8C7233", "#CBB173")
+WARN = ("#7A6328", "#CBB173")
 
 FONT = "Segoe UI"
 
 
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    value = value.lstrip("#")
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+def _rgb_to_hex(rgb: tuple[float, float, float]) -> str:
+    return "#%02x%02x%02x" % tuple(max(0, min(255, int(round(c)))) for c in rgb)
+
+
+def _resolve(color) -> str:
+    """Pick the light/dark variant of a (light, dark) colour for the active mode."""
+    if isinstance(color, (tuple, list)):
+        idx = 0 if ctk.get_appearance_mode() == "Light" else 1
+        return color[idx]
+    return color
+
+
+def _lerp_color(c1: str, c2: str, t: float) -> str:
+    a, b = _hex_to_rgb(c1), _hex_to_rgb(c2)
+    return _rgb_to_hex(tuple(a[i] + (b[i] - a[i]) * t for i in range(3)))
+
+
 class WhatsAppInviterApp(ctk.CTk):
-    def __init__(self):
+    def __init__(self, splash: bool = True):
         super().__init__()
         self.title("WhatsApp Inviter - Hogeschool Leiden")
         self.geometry("1080x820")
@@ -64,11 +88,57 @@ class WhatsAppInviterApp(ctk.CTk):
         self._steps: list[dict] = []
         self._pages: list[ctk.CTkFrame] = []
         self._current_page = 0
+        self._anim_jobs: dict[str, str] = {}
+        self._content: Optional[ctk.CTkFrame] = None
+        self._active_page: Optional[ctk.CTkFrame] = None
+        self._page_dx = 0
+        self._pulsing = False
+        self._splash = None
+        self._cur_sf = 0.0
+        self._cur_ff = 0.0
 
         self.configure(fg_color=BG)
         self._build_ui()
         self._apply_settings_to_ui()
         self._show_page(0)
+        if splash:
+            self._build_splash()
+
+    # ------------------------------------------------------------------ #
+    #  Animation engine
+    # ------------------------------------------------------------------ #
+    def _cancel_anim(self, key: str) -> None:
+        job = self._anim_jobs.pop(key, None)
+        if job is not None:
+            try:
+                self.after_cancel(job)
+            except Exception:
+                pass
+
+    def _animate(self, key: str, duration_ms: int, step: Callable[[float], None],
+                 done: Optional[Callable[[], None]] = None, fps: int = 60) -> None:
+        """Run an eased (ease-out-quart) tween, cancelling any prior run for `key`."""
+        self._cancel_anim(key)
+        start = time.perf_counter()
+        interval = max(1, int(1000 / fps))
+
+        def tick():
+            t = (time.perf_counter() - start) * 1000 / duration_ms
+            t = 1.0 if t >= 1 else t
+            eased = 1 - (1 - t) ** 4
+            try:
+                step(eased)
+            except Exception:
+                self._anim_jobs.pop(key, None)
+                return
+            if t < 1:
+                self._anim_jobs[key] = self.after(interval, tick)
+            else:
+                self._anim_jobs.pop(key, None)
+                if done:
+                    done()
+
+        tick()
 
     # ------------------------------------------------------------------ #
     #  Fonts (single family; hierarchy via weight + size + space)
@@ -116,7 +186,8 @@ class WhatsAppInviterApp(ctk.CTk):
         ctk.CTkSegmentedButton(
             theme, values=["Licht", "Donker", "Systeem"], variable=self.appearance_var,
             command=self._on_appearance_changed, font=self._f(12), height=30,
-            fg_color=INSET, selected_color=ACCENT, selected_hover_color=ACCENT_HOVER,
+            fg_color=INSET, selected_color=("#C3E0CE", "#2F5E47"),
+            selected_hover_color=("#B6D8C2", "#376B52"),
             unselected_color=INSET, unselected_hover_color=HAIRLINE,
             text_color=INK_SOFT, corner_radius=7,
         ).pack()
@@ -174,19 +245,25 @@ class WhatsAppInviterApp(ctk.CTk):
             return
         step["row"].configure(fg_color=SURFACE if entering else "transparent")
 
+    _PAGE_PAD = (46, 32, 46, 18)  # left, top, right, bottom
+
     def _build_content(self) -> None:
         container = ctk.CTkFrame(self, fg_color="transparent")
         container.grid(row=2, column=1, sticky="nsew")
-        container.grid_rowconfigure(0, weight=1)
-        container.grid_columnconfigure(0, weight=1)
+        self._content = container
 
         self._page_import = self._build_page_import(container)
         self._page_message = self._build_page_message(container)
         self._page_send = self._build_page_send(container)
+        self._pages = [self._page_import, self._page_message, self._page_send]
 
-        for page in (self._page_import, self._page_message, self._page_send):
-            page.grid(row=0, column=0, sticky="nsew", padx=48, pady=(34, 20))
-            self._pages.append(page)
+        container.bind("<Configure>", lambda _e: self._place_active())
+
+    def _place_active(self) -> None:
+        if self._active_page is None:
+            return
+        self._active_page.place(relx=0, rely=0, relwidth=1, relheight=1,
+                                x=self._page_dx, y=0)
 
     def _build_footer(self) -> None:
         self._hairline(self, row=3, columnspan=2)
@@ -206,6 +283,53 @@ class WhatsAppInviterApp(ctk.CTk):
                                            progress_color=ACCENT, fg_color=INSET)
         self.progress.grid(row=0, column=2, padx=36, pady=13, sticky="e")
         self.progress.set(0)
+
+    # ------------------------------------------------------------------ #
+    #  Launch splash
+    # ------------------------------------------------------------------ #
+    def _build_splash(self) -> None:
+        self._splash = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
+        self._splash.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self._splash.tkraise()
+
+        center = ctk.CTkFrame(self._splash, fg_color="transparent")
+        center.place(relx=0.5, rely=0.46, anchor="center")
+
+        bg = _resolve(BG)
+        mark = ctk.CTkLabel(center, text="WhatsApp Inviter", font=self._f(30, "bold"),
+                            text_color=bg)
+        mark.pack()
+        sub = ctk.CTkLabel(center, text="Hogeschool Leiden", font=self._f(13),
+                           text_color=bg)
+        sub.pack(pady=(6, 0))
+        bar = ctk.CTkFrame(center, height=2, width=0, fg_color=_resolve(ACCENT),
+                           corner_radius=1)
+        bar.pack(pady=(20, 0))
+
+        ink, muted, accent = _resolve(INK), _resolve(MUTED), _resolve(ACCENT)
+
+        def fade_in(e):
+            mark.configure(text_color=_lerp_color(bg, ink, e))
+            sub.configure(text_color=_lerp_color(bg, muted, e))
+            bar.configure(width=int(160 * e))
+
+        def fade_out(e):
+            mark.configure(text_color=_lerp_color(ink, bg, e))
+            sub.configure(text_color=_lerp_color(muted, bg, e))
+            bar.configure(fg_color=_lerp_color(accent, bg, e))
+
+        def dismiss():
+            self._animate("splash", 320, fade_out, done=self._destroy_splash)
+
+        def hold():
+            self._anim_jobs["splash_hold"] = self.after(420, dismiss)
+
+        self._animate("splash", 460, fade_in, done=hold)
+
+    def _destroy_splash(self) -> None:
+        if self._splash is not None:
+            self._splash.destroy()
+            self._splash = None
 
     # ------------------------------------------------------------------ #
     #  Section helpers
@@ -258,7 +382,9 @@ class WhatsAppInviterApp(ctk.CTk):
     #  Page 1 - Import
     # ------------------------------------------------------------------ #
     def _build_page_import(self, parent) -> ctk.CTkFrame:
-        page = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        outer = ctk.CTkFrame(parent, fg_color="transparent")
+        page = ctk.CTkScrollableFrame(outer, fg_color="transparent")
+        page.pack(fill="both", expand=True, padx=(46, 40), pady=(30, 16))
         page.grid_columnconfigure(0, weight=1)
 
         self._page_heading(page, "Stap 1 van 3", "Importeren",
@@ -334,13 +460,15 @@ class WhatsAppInviterApp(ctk.CTk):
         nav.grid(row=8, column=0, sticky="e", pady=(32, 6))
         self._primary_btn(nav, "Verder naar bericht", lambda: self._show_page(1),
                           width=190).pack(side="right")
-        return page
+        return outer
 
     # ------------------------------------------------------------------ #
     #  Page 2 - Message
     # ------------------------------------------------------------------ #
     def _build_page_message(self, parent) -> ctk.CTkFrame:
-        page = ctk.CTkFrame(parent, fg_color="transparent")
+        outer = ctk.CTkFrame(parent, fg_color="transparent")
+        page = ctk.CTkFrame(outer, fg_color="transparent")
+        page.pack(fill="both", expand=True, padx=46, pady=(32, 18))
         page.grid_columnconfigure(0, weight=1)
         page.grid_rowconfigure(3, weight=1)
 
@@ -390,26 +518,23 @@ class WhatsAppInviterApp(ctk.CTk):
                           width=200).pack(side="right")
         self._ghost_btn(actions, "Opslaan als standaard", self._save_message_default,
                         width=180, accent=True).pack(side="right", padx=(0, 10))
-        return page
+        return outer
 
     # ------------------------------------------------------------------ #
     #  Page 3 - Send
     # ------------------------------------------------------------------ #
     def _build_page_send(self, parent) -> ctk.CTkFrame:
-        page = ctk.CTkFrame(parent, fg_color="transparent")
+        outer = ctk.CTkFrame(parent, fg_color="transparent")
+        page = ctk.CTkFrame(outer, fg_color="transparent")
+        page.pack(fill="both", expand=True, padx=46, pady=(32, 18))
         page.grid_columnconfigure(0, weight=1)
 
         self._page_heading(page, "Stap 3 van 3", "Versturen",
                            "Controleer de opties, start de verzending en volg het verloop."
                            ).grid(row=0, column=0, sticky="ew", pady=(0, 26))
 
-        strip = ctk.CTkFrame(page, fg_color="transparent")
-        strip.grid(row=1, column=0, sticky="ew")
-        self.stat_total = self._stat(strip, 0, "Totaal", INK)
-        self.stat_remaining = self._stat(strip, 1, "Te versturen", INK)
-        self.stat_sent = self._stat(strip, 2, "Verzonden", INK)
-        self.stat_failed = self._stat(strip, 3, "Mislukt", INK)
-        self._hairline(page, row=2, pady=(22, 22))
+        self._build_send_progress(page).grid(row=1, column=0, sticky="ew")
+        self._hairline(page, row=2, pady=(24, 22))
 
         warn = ctk.CTkFrame(page, fg_color="transparent", corner_radius=9, border_width=1,
                             border_color=HAIRLINE)
@@ -483,17 +608,92 @@ class WhatsAppInviterApp(ctk.CTk):
                                       border_color=HAIRLINE, scrollbar_button_color=FAINT)
         self.log_box.grid(row=8, column=0, sticky="nsew")
         page.grid_rowconfigure(8, weight=1)
-        return page
+        return outer
 
-    def _stat(self, parent, col: int, label: str, accent) -> ctk.CTkLabel:
-        parent.grid_columnconfigure(col, weight=1, uniform="stat")
+    def _build_send_progress(self, parent) -> ctk.CTkFrame:
+        """A single batch meter that narrates the send instead of 4 KPI tiles."""
+        box = ctk.CTkFrame(parent, fg_color="transparent")
+        box.grid_columnconfigure(0, weight=1)
+
+        self.progress_headline = ctk.CTkLabel(
+            box, text="Nog geen contacten geladen", font=self._f(20, "bold"),
+            text_color=INK, anchor="w")
+        self.progress_headline.grid(row=0, column=0, sticky="w")
+
+        track = ctk.CTkFrame(box, height=14, corner_radius=7, fg_color=INSET)
+        track.grid(row=1, column=0, sticky="ew", pady=(16, 0))
+        track.grid_propagate(False)
+        self._seg_sent = ctk.CTkFrame(track, corner_radius=7, fg_color=ACCENT)
+        self._seg_sent.place(relx=0, rely=0, relheight=1, relwidth=0)
+        self._seg_failed = ctk.CTkFrame(track, corner_radius=7, fg_color=WARN)
+        self._seg_failed.place(relx=0, rely=0, relheight=1, relwidth=0)
+
+        legend = ctk.CTkFrame(box, fg_color="transparent")
+        legend.grid(row=2, column=0, sticky="w", pady=(14, 0))
+        self.legend_sent = self._legend_item(legend, 0, ACCENT, "verzonden")
+        self.legend_remaining = self._legend_item(legend, 1, FAINT, "te gaan")
+        self.legend_failed = self._legend_item(legend, 2, WARN, "mislukt")
+        self.legend_failed["cell"].grid_remove()
+        return box
+
+    def _legend_item(self, parent, col: int, color, caption: str) -> dict:
         cell = ctk.CTkFrame(parent, fg_color="transparent")
-        cell.grid(row=0, column=col, sticky="w")
-        value = ctk.CTkLabel(cell, text="0", font=self._f(26, "bold"), text_color=accent)
-        value.pack(anchor="w")
-        ctk.CTkLabel(cell, text=label, font=self._f(11), text_color=MUTED).pack(
-            anchor="w", pady=(1, 0))
-        return value
+        cell.grid(row=0, column=col, padx=(0, 24), sticky="w")
+        ctk.CTkLabel(cell, text="\u25cf", text_color=color, font=self._f(10)).pack(
+            side="left", padx=(0, 7))
+        val = ctk.CTkLabel(cell, text="0", font=self._f(14, "bold"), text_color=INK)
+        val.pack(side="left", padx=(0, 5))
+        ctk.CTkLabel(cell, text=caption, font=self._f(12), text_color=MUTED).pack(side="left")
+        return {"cell": cell, "val": val}
+
+    def _render_progress(self, total: int, remaining: int, sent: int, failed: int) -> None:
+        sending = self._pulsing
+        if sending:
+            headline = f"Bezig met versturen \u2014 {sent} van {total} verzonden"
+            to_go = max(total - sent - failed, 0)
+        elif self.send_results:
+            headline = f"Klaar \u2014 {sent} verzonden"
+            if failed:
+                headline += f", {failed} mislukt"
+            to_go = max(total - sent - failed, 0)
+        elif total == 0:
+            headline = "Nog geen contacten geladen"
+            to_go = 0
+        elif remaining == 1:
+            headline = "1 student klaar om uit te nodigen"
+            to_go = remaining
+        else:
+            headline = f"{remaining} studenten klaar om uit te nodigen"
+            to_go = remaining
+
+        self.progress_headline.configure(text=headline)
+        self._set_stat(self.legend_sent["val"], sent)
+        self._set_stat(self.legend_remaining["val"], to_go)
+        self._set_stat(self.legend_failed["val"], failed)
+        if failed:
+            self.legend_failed["cell"].grid()
+        else:
+            self.legend_failed["cell"].grid_remove()
+
+        sf = sent / total if total else 0.0
+        ff = failed / total if total else 0.0
+        self._animate_segments(sf, ff)
+
+    def _animate_segments(self, sent_frac: float, failed_frac: float) -> None:
+        s0, f0 = self._cur_sf, self._cur_ff
+
+        def step(e):
+            sf = s0 + (sent_frac - s0) * e
+            ff = f0 + (failed_frac - f0) * e
+            self._seg_sent.place_configure(relx=0, relwidth=sf)
+            self._seg_failed.place_configure(relx=sf, relwidth=ff)
+
+        def done():
+            self._cur_sf, self._cur_ff = sent_frac, failed_frac
+            self._seg_sent.place_configure(relx=0, relwidth=sent_frac)
+            self._seg_failed.place_configure(relx=sent_frac, relwidth=failed_frac)
+
+        self._animate("segs", 340, step, done)
 
     # ------------------------------------------------------------------ #
     #  Navigation
@@ -501,10 +701,23 @@ class WhatsAppInviterApp(ctk.CTk):
     def _show_page(self, index: int) -> None:
         self._current_page = index
         for i, page in enumerate(self._pages):
-            if i == index:
-                page.grid()
-            else:
-                page.grid_remove()
+            if i != index:
+                page.place_forget()
+        self._active_page = self._pages[index]
+        self._page_dx = 24
+        self._place_active()
+        self._active_page.tkraise()
+
+        def step(e):
+            self._page_dx = int(round(24 * (1 - e)))
+            self._place_active()
+
+        def done():
+            self._page_dx = 0
+            self._place_active()
+
+        self._animate("page", 240, step, done)
+
         for step in self._steps:
             active = step["idx"] == index
             step["active"] = active
@@ -529,6 +742,7 @@ class WhatsAppInviterApp(ctk.CTk):
         self.mark_sent_var.set(self.settings.get("mark_sent", True))
         self._apply_appearance(self.settings.get("appearance", "Systeem"))
         self._update_preview()
+        self._update_stats()
 
     _APPEARANCE_MAP = {"Licht": "light", "Donker": "dark", "Systeem": "system"}
 
@@ -569,10 +783,51 @@ class WhatsAppInviterApp(ctk.CTk):
             remaining = total
         sent = sum(1 for r in self.send_results if r.status == SendStatus.SENT.name)
         failed = sum(1 for r in self.send_results if r.status == SendStatus.FAILED.name)
-        self.stat_total.configure(text=str(total))
-        self.stat_remaining.configure(text=str(remaining))
-        self.stat_sent.configure(text=str(sent))
-        self.stat_failed.configure(text=str(failed))
+        self._render_progress(total, remaining, sent, failed)
+
+    def _set_stat(self, widget: ctk.CTkLabel, target: int) -> None:
+        """Count up/down to the target value with a short eased tween."""
+        try:
+            start = int(widget.cget("text"))
+        except (ValueError, TypeError):
+            start = 0
+        if start == target:
+            widget.configure(text=str(target))
+            return
+        key = f"stat-{id(widget)}"
+        self._animate(
+            key, 320,
+            lambda e: widget.configure(text=str(int(round(start + (target - start) * e)))),
+            done=lambda: widget.configure(text=str(target)))
+
+    def _set_progress(self, target: float) -> None:
+        start = self.progress.get()
+        if abs(target - start) < 1e-3:
+            self.progress.set(target)
+            return
+        self._animate("progress", 260,
+                      lambda e: self.progress.set(start + (target - start) * e),
+                      done=lambda: self.progress.set(target))
+
+    def _start_pulse(self) -> None:
+        self._pulsing = True
+        self._pulse_phase = 0.0
+        self._pulse()
+
+    def _pulse(self) -> None:
+        if not self._pulsing:
+            return
+        e = (math.sin(self._pulse_phase) + 1) / 2
+        col = _lerp_color(_resolve(ACCENT), _resolve(BG), 0.55 * e)
+        self.status_dot.configure(text_color=col)
+        self._pulse_phase += 0.32
+        self._anim_jobs["pulse"] = self.after(45, self._pulse)
+
+    def _stop_pulse(self, color=None) -> None:
+        self._pulsing = False
+        self._cancel_anim("pulse")
+        if color is not None:
+            self.status_dot.configure(text_color=color)
 
     # ------------------------------------------------------------------ #
     #  Excel handling (logic unchanged)
@@ -809,6 +1064,7 @@ class WhatsAppInviterApp(ctk.CTk):
         self.export_btn.configure(state="disabled")
         self._update_stats()
         self._set_status("Bezig met versturen\u2026", color=ACCENT)
+        self._start_pulse()
         if start_index > 0:
             self._log(f"--- Start versturen (vanaf #{start_index + 1}, {first.name}) ---")
         else:
@@ -819,6 +1075,7 @@ class WhatsAppInviterApp(ctk.CTk):
     def _stop_sending(self) -> None:
         self.sender.stop()
         self._log("Stop aangevraagd...")
+        self._stop_pulse()
         self._set_status("Stoppen\u2026", color=WARN)
 
     def _continue_sending(self) -> None:
@@ -830,7 +1087,7 @@ class WhatsAppInviterApp(ctk.CTk):
 
     def _handle_send_event(self, event: SendEvent) -> None:
         if event.total > 0:
-            self.progress.set(event.index / event.total)
+            self._set_progress(event.index / event.total)
 
         if event.message:
             self._log(event.message)
@@ -883,6 +1140,7 @@ class WhatsAppInviterApp(ctk.CTk):
         )
 
     def _finish_sending(self) -> None:
+        self._stop_pulse()
         self.send_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
         self.continue_btn.configure(state="disabled")
