@@ -228,7 +228,7 @@ class WhatsAppInviterApp(ctk.CTk):
         return ctk.CTkLabel(parent, text=text, font=self._f(13), text_color=MUTED,
                             anchor="w")
 
-    def _menu(self, parent, var, values, command=None, width=360):
+    def _menu(self, parent, var, values, command=None, width=320):
         return ctk.CTkOptionMenu(
             parent, variable=var, values=values, command=command or self._on_columns_changed,
             height=34, corner_radius=8, font=self._f(13), fg_color=INSET,
@@ -267,22 +267,25 @@ class WhatsAppInviterApp(ctk.CTk):
 
         self._section_label(page, "Bronbestand").grid(row=1, column=0, sticky="w",
                                                        pady=(0, 12))
-        drop = ctk.CTkFrame(page, fg_color=INSET, corner_radius=10)
+        drop = ctk.CTkFrame(page, fg_color="transparent", corner_radius=10,
+                            border_width=1, border_color=HAIRLINE)
         drop.grid(row=2, column=0, sticky="ew")
         drop.grid_columnconfigure(0, weight=1)
         self.file_label = ctk.CTkLabel(drop, text="Nog geen bestand gekozen", anchor="w",
                                        font=self._f(13), text_color=MUTED)
         self.file_label.grid(row=0, column=0, padx=18, pady=15, sticky="ew")
-        self._primary_btn(drop, "Bladeren", self._pick_excel, width=124).grid(
-            row=0, column=1, padx=10, pady=9)
+        ctk.CTkButton(drop, text="Bladeren", command=self._pick_excel, width=120, height=34,
+                      corner_radius=8, fg_color=INSET, hover_color=HAIRLINE,
+                      text_color=INK_SOFT, font=self._f(13)).grid(row=0, column=1,
+                                                                  padx=9, pady=9)
 
         sheet_row = ctk.CTkFrame(page, fg_color="transparent")
         sheet_row.grid(row=3, column=0, sticky="w", pady=(14, 0))
-        self._field_label(sheet_row, "Werkblad").grid(row=0, column=0, padx=(0, 16),
-                                                       sticky="w")
+        sheet_row.grid_columnconfigure(0, minsize=170)
+        self._field_label(sheet_row, "Werkblad").grid(row=0, column=0, sticky="w")
         self.sheet_var = ctk.StringVar(value="")
         self.sheet_menu = self._menu(sheet_row, self.sheet_var, [""],
-                                     command=self._on_sheet_changed, width=300)
+                                     command=self._on_sheet_changed, width=320)
         self.sheet_menu.grid(row=0, column=1, sticky="w")
 
         self._section_label(page, "Kolommen").grid(row=4, column=0, sticky="w",
@@ -293,6 +296,7 @@ class WhatsAppInviterApp(ctk.CTk):
 
         cols = ctk.CTkFrame(page, fg_color="transparent")
         cols.grid(row=6, column=0, sticky="ew")
+        cols.grid_columnconfigure(0, minsize=170)
         cols.grid_columnconfigure(1, weight=1)
         fields = [
             ("Telefoonkolom", "phone_col_var", [""]),
@@ -352,8 +356,9 @@ class WhatsAppInviterApp(ctk.CTk):
                      anchor="e").grid(row=0, column=1, sticky="e")
 
         self.message_box = ctk.CTkTextbox(page, height=150, corner_radius=10,
-                                           font=self._f(14), fg_color=INSET, border_width=0,
-                                           text_color=INK, scrollbar_button_color=FAINT)
+                                           font=self._f(14), fg_color=SURFACE, border_width=1,
+                                           border_color=HAIRLINE, text_color=INK,
+                                           scrollbar_button_color=FAINT)
         self.message_box.grid(row=2, column=0, sticky="ew")
         self.message_box.bind("<KeyRelease>", lambda _e: self._update_preview())
 
@@ -363,7 +368,8 @@ class WhatsAppInviterApp(ctk.CTk):
         preview.grid_rowconfigure(1, weight=1)
         self._section_label(preview, "Voorbeeld").grid(row=0, column=0, sticky="w",
                                                         pady=(0, 12))
-        chat = ctk.CTkFrame(preview, fg_color=("#ECEAE3", "#171C1A"), corner_radius=10)
+        chat = ctk.CTkFrame(preview, fg_color=("#ECEAE3", "#171C1A"), corner_radius=10,
+                            border_width=1, border_color=HAIRLINE)
         chat.grid(row=1, column=0, sticky="nsew")
         chat.grid_columnconfigure(0, weight=1)
         bubble = ctk.CTkFrame(chat, fg_color=("#DEE9E0", "#243029"), corner_radius=12)
@@ -399,25 +405,28 @@ class WhatsAppInviterApp(ctk.CTk):
 
         strip = ctk.CTkFrame(page, fg_color="transparent")
         strip.grid(row=1, column=0, sticky="ew")
-        self.stat_total = self._stat(strip, 0, "Totaal", INK_SOFT)
-        self.stat_remaining = self._stat(strip, 1, "Te versturen", INK_SOFT)
-        self.stat_sent = self._stat(strip, 2, "Verzonden", ACCENT)
-        self.stat_failed = self._stat(strip, 3, "Mislukt", WARN)
+        self.stat_total = self._stat(strip, 0, "Totaal", INK)
+        self.stat_remaining = self._stat(strip, 1, "Te versturen", INK)
+        self.stat_sent = self._stat(strip, 2, "Verzonden", INK)
+        self.stat_failed = self._stat(strip, 3, "Mislukt", INK)
         self._hairline(page, row=2, pady=(22, 22))
 
-        warn = ctk.CTkFrame(page, fg_color=INSET, corner_radius=9)
-        warn.grid(row=3, column=0, sticky="ew", pady=(0, 22))
+        warn = ctk.CTkFrame(page, fg_color="transparent", corner_radius=9, border_width=1,
+                            border_color=HAIRLINE)
+        warn.grid(row=3, column=0, sticky="ew", pady=(0, 24))
         ctk.CTkLabel(warn, text="Log eerst in op WhatsApp Web in Chrome of Edge voordat je start.",
                      font=self._f(12), text_color=WARN, anchor="w", justify="left",
                      wraplength=820).pack(anchor="w", padx=15, pady=11)
 
         opts = ctk.CTkFrame(page, fg_color="transparent")
-        opts.grid(row=4, column=0, sticky="ew", pady=(0, 4))
-        self._field_label(opts, "Wachttijd (sec)").grid(row=0, column=0, padx=(0, 8),
-                                                         pady=(0, 14), sticky="w")
+        opts.grid(row=4, column=0, sticky="ew")
+        opts.grid_columnconfigure(0, minsize=130)
+
+        self._field_label(opts, "Wachttijd (sec)").grid(row=0, column=0, sticky="w",
+                                                         pady=(0, 16))
         self.wait_time_var = ctk.StringVar(value="15")
-        self._entry(opts, self.wait_time_var, 66).grid(row=0, column=1, padx=(0, 28),
-                                                        pady=(0, 14), sticky="w")
+        self._entry(opts, self.wait_time_var, 66).grid(row=0, column=1, sticky="w",
+                                                        pady=(0, 16))
 
         def _check(parent, text, var, command=None):
             return ctk.CTkCheckBox(parent, text=text, variable=var, command=command,
@@ -428,16 +437,16 @@ class WhatsAppInviterApp(ctk.CTk):
 
         self.confirm_each_var = ctk.BooleanVar(value=True)
         _check(opts, "Bevestig na elk bericht", self.confirm_each_var).grid(
-            row=0, column=2, padx=(0, 24), pady=(0, 14), sticky="w")
+            row=1, column=0, columnspan=2, sticky="w", pady=4)
         self.skip_sent_var = ctk.BooleanVar(value=True)
         _check(opts, "Sla al verzonden over", self.skip_sent_var, self._refresh_contacts).grid(
-            row=0, column=3, padx=(0, 24), pady=(0, 14), sticky="w")
+            row=2, column=0, columnspan=2, sticky="w", pady=4)
         self.mark_sent_var = ctk.BooleanVar(value=True)
         _check(opts, "Vink af in Excel na verzenden", self.mark_sent_var).grid(
-            row=0, column=4, pady=(0, 14), sticky="w")
+            row=3, column=0, columnspan=2, sticky="w", pady=4)
 
         start = ctk.CTkFrame(page, fg_color="transparent")
-        start.grid(row=5, column=0, sticky="w", pady=(0, 22))
+        start.grid(row=5, column=0, sticky="w", pady=(24, 22))
         self._field_label(start, "Start vanaf").grid(row=0, column=0, padx=(0, 10), sticky="w")
         self.start_var = ctk.StringVar(value="")
         self.start_combo = ctk.CTkComboBox(
@@ -453,18 +462,15 @@ class WhatsAppInviterApp(ctk.CTk):
         self.send_btn = self._primary_btn(btns, "Start versturen", self._start_sending,
                                           width=160)
         self.send_btn.pack(side="left", padx=(0, 10))
-        self.stop_btn = ctk.CTkButton(
-            btns, text="Stop", command=self._stop_sending, width=92, height=40,
-            corner_radius=9, state="disabled", fg_color="transparent", border_width=1,
-            border_color=WARN, text_color=WARN, hover_color=INSET, font=self._f(13))
+        self.stop_btn = self._ghost_btn(btns, "Stop", self._stop_sending, width=92)
+        self.stop_btn.configure(state="disabled")
         self.stop_btn.pack(side="left", padx=(0, 10))
-        self.continue_btn = ctk.CTkButton(
-            btns, text="Volgende", command=self._continue_sending, width=110, height=40,
-            corner_radius=9, state="disabled", fg_color=INK_SOFT, hover_color=INK,
-            text_color="#FBFAF7", font=self._f(13))
+        self.continue_btn = self._ghost_btn(btns, "Volgende", self._continue_sending,
+                                            width=110)
+        self.continue_btn.configure(state="disabled")
         self.continue_btn.pack(side="left", padx=(0, 10))
         self.export_btn = self._ghost_btn(btns, "Exporteer rapport", self._export_report,
-                                          width=160, accent=True)
+                                          width=160)
         self.export_btn.configure(state="disabled")
         self.export_btn.pack(side="left")
 
@@ -473,8 +479,8 @@ class WhatsAppInviterApp(ctk.CTk):
         self._section_label(log_head, "Log").pack(anchor="w")
         self.log_box = ctk.CTkTextbox(page, height=140, state="disabled", corner_radius=10,
                                       font=self._mono(12), fg_color=SURFACE,
-                                      text_color=INK_SOFT, border_width=0,
-                                      scrollbar_button_color=FAINT)
+                                      text_color=INK_SOFT, border_width=1,
+                                      border_color=HAIRLINE, scrollbar_button_color=FAINT)
         self.log_box.grid(row=8, column=0, sticky="nsew")
         page.grid_rowconfigure(8, weight=1)
         return page
