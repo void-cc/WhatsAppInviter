@@ -14,9 +14,13 @@ from core.excel_loader import (
     extract_contacts,
     guess_name_column,
     guess_phone_column,
+    guess_sent_column,
     list_sheet_names,
     load_sheet_table,
+    mark_rows_sent,
 )
+from core.message import PLACEHOLDER_HINT, personalize
+from core.report import SendResult, export_results
 from core.sender import SendEvent, SendStatus, WhatsAppSender
 from core.settings import load_settings, save_settings
 
@@ -35,6 +39,8 @@ class WhatsAppInviterApp(ctk.CTk):
         self.excel_path: Optional[Path] = None
         self.table: Optional[SheetTable] = None
         self.contacts = []
+        self.send_results: list[SendResult] = []
+        self._sent_rows: list[int] = []
         self.sender = WhatsAppSender(on_event=self._on_send_event)
 
         self._build_ui()
@@ -50,8 +56,19 @@ class WhatsAppInviterApp(ctk.CTk):
         step1.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(step1, text="Excel-bestand", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, columnspan=3, padx=12, pady=(12, 8), sticky="w"
+            row=0, column=0, columnspan=2, padx=12, pady=(12, 8), sticky="w"
         )
+
+        appearance_frame = ctk.CTkFrame(step1, fg_color="transparent")
+        appearance_frame.grid(row=0, column=2, padx=12, pady=(12, 8), sticky="e")
+        ctk.CTkLabel(appearance_frame, text="Thema:").pack(side="left", padx=(0, 6))
+        self.appearance_var = ctk.StringVar(value=self.settings.get("appearance", "Systeem"))
+        ctk.CTkSegmentedButton(
+            appearance_frame,
+            values=["Licht", "Donker", "Systeem"],
+            variable=self.appearance_var,
+            command=self._on_appearance_changed,
+        ).pack(side="left")
 
         self.file_label = ctk.CTkLabel(step1, text="Geen bestand gekozen", anchor="w")
         self.file_label.grid(row=1, column=0, columnspan=2, padx=12, pady=4, sticky="ew")
@@ -90,14 +107,21 @@ class WhatsAppInviterApp(ctk.CTk):
         )
         self.name_col_menu.grid(row=2, column=1, padx=12, pady=4, sticky="w")
 
+        ctk.CTkLabel(step2, text="Verzonden-kolom (optioneel):").grid(row=3, column=0, padx=12, pady=4, sticky="w")
+        self.sent_col_var = ctk.StringVar(value="(geen)")
+        self.sent_col_menu = ctk.CTkOptionMenu(
+            step2, variable=self.sent_col_var, values=["(geen)"], command=self._on_columns_changed, width=400
+        )
+        self.sent_col_menu.grid(row=3, column=1, padx=12, pady=4, sticky="w")
+
         self.contact_count_label = ctk.CTkLabel(step2, text="0 geldige telefoonnummers gevonden")
-        self.contact_count_label.grid(row=3, column=0, columnspan=2, padx=12, pady=(4, 12), sticky="w")
+        self.contact_count_label.grid(row=4, column=0, columnspan=2, padx=12, pady=(4, 12), sticky="w")
 
         # --- Step 3: Message ---
         step3 = ctk.CTkFrame(self)
         step3.grid(row=2, column=0, padx=16, pady=8, sticky="ew")
         step3.grid_columnconfigure(0, weight=1)
-        step3.grid_rowconfigure(2, weight=1)
+        step3.grid_rowconfigure(3, weight=1)
 
         header3 = ctk.CTkFrame(step3, fg_color="transparent")
         header3.grid(row=0, column=0, padx=12, pady=(12, 4), sticky="ew")
@@ -118,8 +142,21 @@ class WhatsAppInviterApp(ctk.CTk):
         ctk.CTkEntry(options_row, textvariable=self.country_code_var, width=60).pack(side="left", padx=(0, 16))
         self.country_code_var.trace_add("write", lambda *_: self._refresh_contacts())
 
+        ctk.CTkLabel(options_row, text=PLACEHOLDER_HINT, text_color="gray").pack(side="left")
+
         self.message_box = ctk.CTkTextbox(step3, height=140)
-        self.message_box.grid(row=2, column=0, padx=12, pady=(4, 12), sticky="ew")
+        self.message_box.grid(row=2, column=0, padx=12, pady=(4, 4), sticky="ew")
+        self.message_box.bind("<KeyRelease>", lambda _e: self._update_preview())
+
+        self.preview_label = ctk.CTkLabel(
+            step3,
+            text="Voorbeeld: -",
+            anchor="w",
+            justify="left",
+            wraplength=820,
+            text_color="gray",
+        )
+        self.preview_label.grid(row=3, column=0, padx=12, pady=(0, 12), sticky="ew")
 
         # --- Step 4: Send ---
         step4 = ctk.CTkFrame(self)
@@ -150,6 +187,21 @@ class WhatsAppInviterApp(ctk.CTk):
             variable=self.confirm_each_var,
         ).pack(side="left", padx=(0, 16))
 
+        self.skip_sent_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(
+            options_frame,
+            text="Sla al verzonden over",
+            variable=self.skip_sent_var,
+            command=self._refresh_contacts,
+        ).pack(side="left", padx=(0, 16))
+
+        self.mark_sent_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(
+            options_frame,
+            text="Vink af in Excel na verzenden",
+            variable=self.mark_sent_var,
+        ).pack(side="left", padx=(0, 16))
+
         start_frame = ctk.CTkFrame(step4, fg_color="transparent")
         start_frame.grid(row=3, column=0, columnspan=4, padx=12, pady=(0, 8), sticky="w")
 
@@ -175,7 +227,18 @@ class WhatsAppInviterApp(ctk.CTk):
         self.continue_btn = ctk.CTkButton(
             btn_row, text="Volgende", command=self._continue_sending, width=100, state="disabled"
         )
-        self.continue_btn.pack(side="left")
+        self.continue_btn.pack(side="left", padx=(0, 8))
+
+        self.export_btn = ctk.CTkButton(
+            btn_row,
+            text="Exporteer rapport",
+            command=self._export_report,
+            width=150,
+            state="disabled",
+            fg_color="#2e7d32",
+            hover_color="#1b5e20",
+        )
+        self.export_btn.pack(side="left")
 
         self.progress = ctk.CTkProgressBar(self)
         self.progress.grid(row=4, column=0, padx=16, pady=(0, 4), sticky="ew")
@@ -189,6 +252,28 @@ class WhatsAppInviterApp(ctk.CTk):
         self.country_code_var.set(self.settings.get("country_code", "+31"))
         self.wait_time_var.set(str(self.settings.get("wait_time", 15)))
         self.confirm_each_var.set(self.settings.get("confirm_each", True))
+        self.skip_sent_var.set(self.settings.get("skip_sent", True))
+        self.mark_sent_var.set(self.settings.get("mark_sent", True))
+        self._apply_appearance(self.settings.get("appearance", "Systeem"))
+        self._update_preview()
+
+    _APPEARANCE_MAP = {"Licht": "light", "Donker": "dark", "Systeem": "system"}
+
+    def _apply_appearance(self, label: str) -> None:
+        ctk.set_appearance_mode(self._APPEARANCE_MAP.get(label, "system"))
+
+    def _on_appearance_changed(self, label: str) -> None:
+        self._apply_appearance(label)
+        self.settings["appearance"] = label
+
+    def _update_preview(self) -> None:
+        message = self.message_box.get("1.0", "end").strip()
+        if not message:
+            self.preview_label.configure(text="Voorbeeld: -")
+            return
+        sample_name = self.contacts[0].name if self.contacts else "Jan Jansen"
+        preview = personalize(message, sample_name)
+        self.preview_label.configure(text=f"Voorbeeld ({sample_name}): {preview}")
 
     def _log(self, text: str) -> None:
         self.log_box.configure(state="normal")
@@ -239,9 +324,11 @@ class WhatsAppInviterApp(ctk.CTk):
         name_options = ["(geen)"] + headers
         self.phone_col_menu.configure(values=headers)
         self.name_col_menu.configure(values=name_options)
+        self.sent_col_menu.configure(values=name_options)
 
         saved_phone = self.settings.get("phone_column", "")
         saved_name = self.settings.get("name_column", "")
+        saved_sent = self.settings.get("sent_column", "")
 
         phone_guess = guess_phone_column(headers)
         phone_col = saved_phone if saved_phone in headers else (phone_guess or headers[0])
@@ -254,6 +341,14 @@ class WhatsAppInviterApp(ctk.CTk):
             self.name_col_var.set(name_guess)
         else:
             self.name_col_var.set("(geen)")
+
+        sent_guess = guess_sent_column(headers)
+        if saved_sent and saved_sent in headers:
+            self.sent_col_var.set(saved_sent)
+        elif sent_guess:
+            self.sent_col_var.set(sent_guess)
+        else:
+            self.sent_col_var.set("(geen)")
 
         self._refresh_contacts()
         self._log(f"Geladen: {self.excel_path.name} / {sheet_name} ({len(headers)} kolommen)")
@@ -271,6 +366,9 @@ class WhatsAppInviterApp(ctk.CTk):
         name_col = self.name_col_var.get()
         if name_col == "(geen)":
             name_col = None
+        sent_col = self.sent_col_var.get()
+        if sent_col == "(geen)":
+            sent_col = None
 
         country = self.country_code_var.get().strip() or "+31"
         self.contacts = extract_contacts(
@@ -278,11 +376,26 @@ class WhatsAppInviterApp(ctk.CTk):
             phone_column=phone_col,
             name_column=name_col,
             country_code=country,
+            sent_column=sent_col,
         )
-        self.contact_count_label.configure(
-            text=f"{len(self.contacts)} geldige telefoonnummers gevonden"
-        )
+
+        total = len(self.contacts)
+        already_sent = sum(1 for c in self.contacts if c.already_sent)
+        if sent_col and self.skip_sent_var.get() and already_sent:
+            remaining = total - already_sent
+            self.contact_count_label.configure(
+                text=f"{total} geldige nummers - {already_sent} al verzonden, {remaining} nog te versturen"
+            )
+        elif sent_col and already_sent:
+            self.contact_count_label.configure(
+                text=f"{total} geldige nummers ({already_sent} al gemarkeerd als verzonden)"
+            )
+        else:
+            self.contact_count_label.configure(
+                text=f"{total} geldige telefoonnummers gevonden"
+            )
         self._refresh_start_options()
+        self._update_preview()
 
     def _contact_label(self, position: int, contact) -> str:
         return f"{position} - {contact.name} ({contact.phone_normalized}) - Excel-rij {contact.row_index}"
@@ -316,9 +429,14 @@ class WhatsAppInviterApp(ctk.CTk):
         except ValueError:
             self.settings["wait_time"] = 15
         self.settings["confirm_each"] = self.confirm_each_var.get()
+        self.settings["appearance"] = self.appearance_var.get()
+        self.settings["skip_sent"] = self.skip_sent_var.get()
+        self.settings["mark_sent"] = self.mark_sent_var.get()
         self.settings["phone_column"] = self.phone_col_var.get()
         name_col = self.name_col_var.get()
         self.settings["name_column"] = "" if name_col == "(geen)" else name_col
+        sent_col = self.sent_col_var.get()
+        self.settings["sent_column"] = "" if sent_col == "(geen)" else sent_col
         if self.excel_path:
             self.settings["last_sheet"] = self.sheet_var.get()
         save_settings(self.settings)
@@ -344,8 +462,20 @@ class WhatsAppInviterApp(ctk.CTk):
 
         start_index = self._resolve_start_index()
         contacts_to_send = self.contacts[start_index:]
+
+        sent_col_active = self.sent_col_var.get() != "(geen)"
+        skipped_already = 0
+        if sent_col_active and self.skip_sent_var.get():
+            before = len(contacts_to_send)
+            contacts_to_send = [c for c in contacts_to_send if not c.already_sent]
+            skipped_already = before - len(contacts_to_send)
+
         if not contacts_to_send:
-            messagebox.showwarning("Geen contacten", "Er zijn geen contacten vanaf het gekozen startpunt.")
+            messagebox.showwarning(
+                "Geen contacten",
+                "Er zijn geen contacten om te versturen vanaf het gekozen startpunt "
+                "(mogelijk zijn ze al gemarkeerd als verzonden).",
+            )
             return
 
         first = contacts_to_send[0]
@@ -356,6 +486,8 @@ class WhatsAppInviterApp(ctk.CTk):
             )
         else:
             start_note = ""
+        if skipped_already:
+            start_note += f"\n{skipped_already} contact(en) overgeslagen (al verzonden)."
 
         if not messagebox.askyesno(
             "Bevestigen",
@@ -366,10 +498,13 @@ class WhatsAppInviterApp(ctk.CTk):
 
         self.sender.wait_time = wait_time
         self.sender.confirm_each = self.confirm_each_var.get()
+        self.send_results = []
+        self._sent_rows = []
         self.progress.set(0)
         self.send_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.continue_btn.configure(state="disabled")
+        self.export_btn.configure(state="disabled")
         if start_index > 0:
             self._log(f"--- Start versturen (vanaf #{start_index + 1}, {first.name}) ---")
         else:
@@ -395,16 +530,96 @@ class WhatsAppInviterApp(ctk.CTk):
         if event.message:
             self._log(event.message)
 
+        if event.contact is not None and event.status in (
+            SendStatus.SENT,
+            SendStatus.FAILED,
+            SendStatus.SKIPPED,
+        ):
+            self.send_results.append(
+                SendResult.now(
+                    name=event.contact.name,
+                    phone=event.contact.phone_normalized,
+                    status=event.status.name,
+                    detail=event.message,
+                )
+            )
+            if event.status == SendStatus.SENT and event.contact.row_index:
+                self._sent_rows.append(event.contact.row_index)
+
         if event.status == SendStatus.WAITING_CONFIRM:
             self.continue_btn.configure(state="normal")
         elif event.status in (SendStatus.STOPPED, SendStatus.COMPLETED):
             self._finish_sending()
 
+    def _export_report(self) -> None:
+        if not self.send_results:
+            messagebox.showinfo("Geen gegevens", "Er zijn nog geen verzendresultaten om te exporteren.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Rapport opslaan",
+            defaultextension=".csv",
+            initialfile="whatsapp_rapport.csv",
+            filetypes=[("CSV-bestand", "*.csv"), ("Alle bestanden", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            export_results(self.send_results, path)
+        except Exception as exc:
+            messagebox.showerror("Fout", f"Kon rapport niet opslaan:\n{exc}")
+            return
+        sent = sum(1 for r in self.send_results if r.status == SendStatus.SENT.name)
+        failed = sum(1 for r in self.send_results if r.status == SendStatus.FAILED.name)
+        messagebox.showinfo(
+            "Rapport opgeslagen",
+            f"Rapport opgeslagen:\n{path}\n\nVerzonden: {sent}  |  Mislukt: {failed}",
+        )
+
     def _finish_sending(self) -> None:
         self.send_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
         self.continue_btn.configure(state="disabled")
-        self._log("--- Klaar ---")
+        if self.send_results:
+            self.export_btn.configure(state="normal")
+            sent = sum(1 for r in self.send_results if r.status == SendStatus.SENT.name)
+            failed = sum(1 for r in self.send_results if r.status == SendStatus.FAILED.name)
+            self._log(f"--- Klaar --- (verzonden: {sent}, mislukt: {failed})")
+        else:
+            self._log("--- Klaar ---")
+        self._write_back_sent()
+
+    def _write_back_sent(self) -> None:
+        sent_col = self.sent_col_var.get()
+        if (
+            not self.mark_sent_var.get()
+            or sent_col == "(geen)"
+            or not self._sent_rows
+            or not self.excel_path
+            or not self.table
+        ):
+            return
+
+        rows = self._sent_rows
+        self._sent_rows = []
+        try:
+            updated = mark_rows_sent(
+                self.excel_path,
+                sheet_name=self.table.sheet_name,
+                column_header=sent_col,
+                header_row=self.table.header_row,
+                row_numbers=rows,
+            )
+            self._log(f"{updated} rij(en) afgevinkt in Excel-kolom '{sent_col}'.")
+            self._load_sheet(self.sheet_var.get())
+        except PermissionError:
+            messagebox.showwarning(
+                "Excel-bestand is geopend",
+                "Kon de Excel niet bijwerken omdat het bestand open is.\n"
+                "Sluit het bestand in Excel en stuur eventueel opnieuw, "
+                "of werk de kolom handmatig bij.",
+            )
+        except Exception as exc:
+            messagebox.showerror("Fout", f"Kon Excel niet bijwerken:\n{exc}")
 
 
 def main() -> None:
