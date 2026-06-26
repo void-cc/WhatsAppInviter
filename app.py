@@ -25,15 +25,33 @@ from core.sender import SendEvent, SendStatus, WhatsAppSender
 from core.settings import load_settings, save_settings
 
 ctk.set_appearance_mode("system")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme("green")
+
+# --- Quiet palette: tinted neutrals + one muted green accent ------------- #
+# Tuples are (light, dark). Neutrals carry a faint warm tint; colour appears
+# only as a single accent so the interface stays calm and legible.
+BG = ("#F5F4F0", "#15191A")
+SURFACE = ("#FBFAF7", "#1B201F")
+INSET = ("#EDEBE5", "#242A28")
+INK = ("#262A27", "#E6E8E4")
+INK_SOFT = ("#4C514D", "#BEC3BE")
+MUTED = ("#80847F", "#888E88")
+FAINT = ("#ABAEA8", "#565C58")
+HAIRLINE = ("#E5E3DC", "#272D2A")
+ACCENT = ("#3A7D5C", "#54A37C")
+ACCENT_HOVER = ("#316b4e", "#62b389")
+ACCENT_SOFT = ("#E7EFE9", "#1F2D27")
+WARN = ("#8C7233", "#CBB173")
+
+FONT = "Segoe UI"
 
 
 class WhatsAppInviterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("WhatsApp Inviter - Hogeschool Leiden")
-        self.geometry("900x780")
-        self.minsize(800, 700)
+        self.geometry("1080x820")
+        self.minsize(960, 700)
 
         self.settings = load_settings()
         self.excel_path: Optional[Path] = None
@@ -43,210 +61,459 @@ class WhatsAppInviterApp(ctk.CTk):
         self._sent_rows: list[int] = []
         self.sender = WhatsAppSender(on_event=self._on_send_event)
 
+        self._steps: list[dict] = []
+        self._pages: list[ctk.CTkFrame] = []
+        self._current_page = 0
+
+        self.configure(fg_color=BG)
         self._build_ui()
         self._apply_settings_to_ui()
+        self._show_page(0)
 
+    # ------------------------------------------------------------------ #
+    #  Fonts (single family; hierarchy via weight + size + space)
+    # ------------------------------------------------------------------ #
+    def _f(self, size: int, weight: str = "normal") -> ctk.CTkFont:
+        return ctk.CTkFont(family=FONT, size=size, weight=weight)
+
+    def _mono(self, size: int) -> ctk.CTkFont:
+        return ctk.CTkFont(family="Consolas", size=size)
+
+    # ------------------------------------------------------------------ #
+    #  Layout scaffolding
+    # ------------------------------------------------------------------ #
     def _build_ui(self) -> None:
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(5, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
 
-        # --- Step 1: Import ---
-        step1 = ctk.CTkFrame(self)
-        step1.grid(row=0, column=0, padx=16, pady=(16, 8), sticky="ew")
-        step1.grid_columnconfigure(1, weight=1)
+        self._build_header()
+        self._hairline(self, row=1, columnspan=2)
+        self._build_sidebar()
+        self._build_content()
+        self._build_footer()
 
-        ctk.CTkLabel(step1, text="Excel-bestand", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, columnspan=2, padx=12, pady=(12, 8), sticky="w"
-        )
+    def _hairline(self, parent, row: int, column: int = 0, columnspan: int = 1,
+                  pady=0) -> None:
+        line = ctk.CTkFrame(parent, height=1, fg_color=HAIRLINE, corner_radius=0)
+        line.grid(row=row, column=column, columnspan=columnspan, sticky="ew", pady=pady)
 
-        appearance_frame = ctk.CTkFrame(step1, fg_color="transparent")
-        appearance_frame.grid(row=0, column=2, padx=12, pady=(12, 8), sticky="e")
-        ctk.CTkLabel(appearance_frame, text="Thema:").pack(side="left", padx=(0, 6))
+    def _build_header(self) -> None:
+        header = ctk.CTkFrame(self, fg_color="transparent", height=76)
+        header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        header.grid_columnconfigure(0, weight=1)
+        header.grid_propagate(False)
+
+        mark = ctk.CTkFrame(header, fg_color="transparent")
+        mark.grid(row=0, column=0, padx=(34, 0), pady=18, sticky="w")
+        ctk.CTkLabel(mark, text="WhatsApp Inviter", font=self._f(19, "bold"),
+                     text_color=INK).pack(anchor="w")
+        ctk.CTkLabel(mark, text="Hogeschool Leiden  ·  studenten uitnodigen via WhatsApp",
+                     font=self._f(12), text_color=MUTED).pack(anchor="w", pady=(2, 0))
+
+        theme = ctk.CTkFrame(header, fg_color="transparent")
+        theme.grid(row=0, column=1, padx=34, pady=18, sticky="e")
         self.appearance_var = ctk.StringVar(value=self.settings.get("appearance", "Systeem"))
         ctk.CTkSegmentedButton(
-            appearance_frame,
-            values=["Licht", "Donker", "Systeem"],
-            variable=self.appearance_var,
-            command=self._on_appearance_changed,
-        ).pack(side="left")
+            theme, values=["Licht", "Donker", "Systeem"], variable=self.appearance_var,
+            command=self._on_appearance_changed, font=self._f(12), height=30,
+            fg_color=INSET, selected_color=ACCENT, selected_hover_color=ACCENT_HOVER,
+            unselected_color=INSET, unselected_hover_color=HAIRLINE,
+            text_color=INK_SOFT, corner_radius=7,
+        ).pack()
 
-        self.file_label = ctk.CTkLabel(step1, text="Geen bestand gekozen", anchor="w")
-        self.file_label.grid(row=1, column=0, columnspan=2, padx=12, pady=4, sticky="ew")
+    def _build_sidebar(self) -> None:
+        sidebar = ctk.CTkFrame(self, fg_color="transparent", width=230)
+        sidebar.grid(row=2, column=0, sticky="nsw")
+        sidebar.grid_propagate(False)
+        sidebar.grid_columnconfigure(0, weight=1)
+        sidebar.grid_rowconfigure(99, weight=1)
 
-        ctk.CTkButton(step1, text="Kies Excel-bestand (.xlsx)", command=self._pick_excel).grid(
-            row=1, column=2, padx=12, pady=4
-        )
+        ctk.CTkLabel(sidebar, text="Stappen", font=self._f(12, "bold"), text_color=FAINT,
+                     anchor="w").grid(row=0, column=0, padx=(30, 0), pady=(28, 12), sticky="w")
 
-        ctk.CTkLabel(step1, text="Werkblad:").grid(row=2, column=0, padx=12, pady=8, sticky="w")
-        self.sheet_var = ctk.StringVar(value="")
-        self.sheet_menu = ctk.CTkOptionMenu(
-            step1, variable=self.sheet_var, values=[""], command=self._on_sheet_changed, width=300
-        )
-        self.sheet_menu.grid(row=2, column=1, columnspan=2, padx=12, pady=8, sticky="w")
+        steps = [
+            ("Importeren", "Excel & kolommen"),
+            ("Bericht", "Tekst & voorbeeld"),
+            ("Versturen", "Verzenden & log"),
+        ]
+        for idx, (title, sub) in enumerate(steps):
+            self._steps.append(self._make_step(sidebar, idx + 1, idx, title, sub))
 
-        # --- Columns ---
-        step2 = ctk.CTkFrame(self)
-        step2.grid(row=1, column=0, padx=16, pady=8, sticky="ew")
-        step2.grid_columnconfigure(1, weight=1)
+        rule = ctk.CTkFrame(self, width=1, fg_color=HAIRLINE, corner_radius=0)
+        rule.grid(row=2, column=0, sticky="nse")
 
-        ctk.CTkLabel(step2, text="Kolommen", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, columnspan=2, padx=12, pady=(12, 8), sticky="w"
-        )
+    def _make_step(self, parent, grid_row: int, idx: int, title: str, sub: str) -> dict:
+        row = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=8)
+        row.grid(row=grid_row, column=0, sticky="ew", padx=(18, 14), pady=2)
+        row.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(step2, text="Telefoonkolom:").grid(row=1, column=0, padx=12, pady=4, sticky="w")
-        self.phone_col_var = ctk.StringVar(value="")
-        self.phone_col_menu = ctk.CTkOptionMenu(
-            step2, variable=self.phone_col_var, values=[""], command=self._on_columns_changed, width=400
-        )
-        self.phone_col_menu.grid(row=1, column=1, padx=12, pady=4, sticky="w")
+        accent = ctk.CTkFrame(row, width=3, height=34, fg_color="transparent",
+                              corner_radius=2)
+        accent.grid(row=0, column=0, rowspan=2, sticky="ns", padx=(6, 14), pady=8)
 
-        ctk.CTkLabel(step2, text="Naamkolom (optioneel):").grid(row=2, column=0, padx=12, pady=4, sticky="w")
-        self.name_col_var = ctk.StringVar(value="")
-        self.name_col_menu = ctk.CTkOptionMenu(
-            step2, variable=self.name_col_var, values=["(geen)"], command=self._on_columns_changed, width=400
-        )
-        self.name_col_menu.grid(row=2, column=1, padx=12, pady=4, sticky="w")
+        title_lbl = ctk.CTkLabel(row, text=title, font=self._f(14), text_color=MUTED,
+                                 anchor="w")
+        title_lbl.grid(row=0, column=1, sticky="w", pady=(8, 0))
+        sub_lbl = ctk.CTkLabel(row, text=sub, font=self._f(11), text_color=FAINT, anchor="w")
+        sub_lbl.grid(row=1, column=1, sticky="w", pady=(0, 8))
 
-        ctk.CTkLabel(step2, text="Verzonden-kolom (optioneel):").grid(row=3, column=0, padx=12, pady=4, sticky="w")
-        self.sent_col_var = ctk.StringVar(value="(geen)")
-        self.sent_col_menu = ctk.CTkOptionMenu(
-            step2, variable=self.sent_col_var, values=["(geen)"], command=self._on_columns_changed, width=400
-        )
-        self.sent_col_menu.grid(row=3, column=1, padx=12, pady=4, sticky="w")
+        step = {"row": row, "accent": accent, "title": title_lbl, "sub": sub_lbl,
+                "idx": idx, "active": False}
+        for w in (row, accent, title_lbl, sub_lbl):
+            w.bind("<Button-1>", lambda _e, i=idx: self._show_page(i))
+            w.bind("<Enter>", lambda _e, s=step: self._hover_step(s, True))
+            w.bind("<Leave>", lambda _e, s=step: self._hover_step(s, False))
+            try:
+                w.configure(cursor="hand2")
+            except Exception:
+                pass
+        return step
 
-        self.contact_count_label = ctk.CTkLabel(step2, text="0 geldige telefoonnummers gevonden")
-        self.contact_count_label.grid(row=4, column=0, columnspan=2, padx=12, pady=(4, 12), sticky="w")
+    def _hover_step(self, step: dict, entering: bool) -> None:
+        if step["active"]:
+            return
+        step["row"].configure(fg_color=SURFACE if entering else "transparent")
 
-        # --- Step 3: Message ---
-        step3 = ctk.CTkFrame(self)
-        step3.grid(row=2, column=0, padx=16, pady=8, sticky="ew")
-        step3.grid_columnconfigure(0, weight=1)
-        step3.grid_rowconfigure(3, weight=1)
+    def _build_content(self) -> None:
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.grid(row=2, column=1, sticky="nsew")
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
 
-        header3 = ctk.CTkFrame(step3, fg_color="transparent")
-        header3.grid(row=0, column=0, padx=12, pady=(12, 4), sticky="ew")
-        header3.grid_columnconfigure(0, weight=1)
+        self._page_import = self._build_page_import(container)
+        self._page_message = self._build_page_message(container)
+        self._page_send = self._build_page_send(container)
 
-        ctk.CTkLabel(header3, text="Bericht", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, sticky="w"
-        )
-        ctk.CTkButton(header3, text="Opslaan als standaard", width=160, command=self._save_message_default).grid(
-            row=0, column=1, padx=8
-        )
+        for page in (self._page_import, self._page_message, self._page_send):
+            page.grid(row=0, column=0, sticky="nsew", padx=48, pady=(34, 20))
+            self._pages.append(page)
 
-        options_row = ctk.CTkFrame(step3, fg_color="transparent")
-        options_row.grid(row=1, column=0, padx=12, pady=4, sticky="w")
+    def _build_footer(self) -> None:
+        self._hairline(self, row=3, columnspan=2)
+        footer = ctk.CTkFrame(self, fg_color="transparent", height=48)
+        footer.grid(row=4, column=0, columnspan=2, sticky="ew")
+        footer.grid_columnconfigure(1, weight=1)
+        footer.grid_propagate(False)
 
-        ctk.CTkLabel(options_row, text="Landcode:").pack(side="left", padx=(0, 8))
-        self.country_code_var = ctk.StringVar(value="+31")
-        ctk.CTkEntry(options_row, textvariable=self.country_code_var, width=60).pack(side="left", padx=(0, 16))
-        self.country_code_var.trace_add("write", lambda *_: self._refresh_contacts())
+        self.status_dot = ctk.CTkLabel(footer, text="\u25cf", text_color=FAINT,
+                                       font=self._f(11))
+        self.status_dot.grid(row=0, column=0, padx=(36, 8), pady=13)
+        self.status_label = ctk.CTkLabel(footer, text="Klaar om te beginnen",
+                                         font=self._f(12), text_color=MUTED, anchor="w")
+        self.status_label.grid(row=0, column=1, sticky="w", pady=13)
 
-        ctk.CTkLabel(options_row, text=PLACEHOLDER_HINT, text_color="gray").pack(side="left")
-
-        self.message_box = ctk.CTkTextbox(step3, height=140)
-        self.message_box.grid(row=2, column=0, padx=12, pady=(4, 4), sticky="ew")
-        self.message_box.bind("<KeyRelease>", lambda _e: self._update_preview())
-
-        self.preview_label = ctk.CTkLabel(
-            step3,
-            text="Voorbeeld: -",
-            anchor="w",
-            justify="left",
-            wraplength=820,
-            text_color="gray",
-        )
-        self.preview_label.grid(row=3, column=0, padx=12, pady=(0, 12), sticky="ew")
-
-        # --- Step 4: Send ---
-        step4 = ctk.CTkFrame(self)
-        step4.grid(row=3, column=0, padx=16, pady=8, sticky="ew")
-
-        ctk.CTkLabel(step4, text="Versturen", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, columnspan=4, padx=12, pady=(12, 8), sticky="w"
-        )
-
-        ctk.CTkLabel(
-            step4,
-            text="Zorg dat je bent ingelogd op WhatsApp Web in Chrome of Edge voordat je start.",
-            text_color="orange",
-            wraplength=800,
-        ).grid(row=1, column=0, columnspan=4, padx=12, pady=4, sticky="w")
-
-        options_frame = ctk.CTkFrame(step4, fg_color="transparent")
-        options_frame.grid(row=2, column=0, columnspan=4, padx=12, pady=8, sticky="w")
-
-        ctk.CTkLabel(options_frame, text="Wachttijd (sec):").pack(side="left", padx=(0, 4))
-        self.wait_time_var = ctk.StringVar(value="15")
-        ctk.CTkEntry(options_frame, textvariable=self.wait_time_var, width=60).pack(side="left", padx=(0, 16))
-
-        self.confirm_each_var = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(
-            options_frame,
-            text="Bevestig na elk bericht",
-            variable=self.confirm_each_var,
-        ).pack(side="left", padx=(0, 16))
-
-        self.skip_sent_var = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(
-            options_frame,
-            text="Sla al verzonden over",
-            variable=self.skip_sent_var,
-            command=self._refresh_contacts,
-        ).pack(side="left", padx=(0, 16))
-
-        self.mark_sent_var = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(
-            options_frame,
-            text="Vink af in Excel na verzenden",
-            variable=self.mark_sent_var,
-        ).pack(side="left", padx=(0, 16))
-
-        start_frame = ctk.CTkFrame(step4, fg_color="transparent")
-        start_frame.grid(row=3, column=0, columnspan=4, padx=12, pady=(0, 8), sticky="w")
-
-        ctk.CTkLabel(start_frame, text="Start vanaf:").pack(side="left", padx=(0, 4))
-        self.start_var = ctk.StringVar(value="")
-        self.start_combo = ctk.CTkComboBox(
-            start_frame, variable=self.start_var, values=["(begin)"], width=420
-        )
-        self.start_combo.pack(side="left", padx=(0, 8))
-        ctk.CTkButton(start_frame, text="Begin", width=70, command=self._reset_start).pack(side="left")
-
-        btn_row = ctk.CTkFrame(step4, fg_color="transparent")
-        btn_row.grid(row=4, column=0, columnspan=4, padx=12, pady=(4, 12), sticky="w")
-
-        self.send_btn = ctk.CTkButton(btn_row, text="Start versturen", command=self._start_sending, width=140)
-        self.send_btn.pack(side="left", padx=(0, 8))
-
-        self.stop_btn = ctk.CTkButton(
-            btn_row, text="Stop", command=self._stop_sending, width=100, state="disabled", fg_color="#c0392b"
-        )
-        self.stop_btn.pack(side="left", padx=(0, 8))
-
-        self.continue_btn = ctk.CTkButton(
-            btn_row, text="Volgende", command=self._continue_sending, width=100, state="disabled"
-        )
-        self.continue_btn.pack(side="left", padx=(0, 8))
-
-        self.export_btn = ctk.CTkButton(
-            btn_row,
-            text="Exporteer rapport",
-            command=self._export_report,
-            width=150,
-            state="disabled",
-            fg_color="#2e7d32",
-            hover_color="#1b5e20",
-        )
-        self.export_btn.pack(side="left")
-
-        self.progress = ctk.CTkProgressBar(self)
-        self.progress.grid(row=4, column=0, padx=16, pady=(0, 4), sticky="ew")
+        self.progress = ctk.CTkProgressBar(footer, width=200, height=5, corner_radius=3,
+                                           progress_color=ACCENT, fg_color=INSET)
+        self.progress.grid(row=0, column=2, padx=36, pady=13, sticky="e")
         self.progress.set(0)
 
-        self.log_box = ctk.CTkTextbox(self, height=180, state="disabled")
-        self.log_box.grid(row=5, column=0, padx=16, pady=(4, 16), sticky="nsew")
+    # ------------------------------------------------------------------ #
+    #  Section helpers
+    # ------------------------------------------------------------------ #
+    def _page_heading(self, parent, step_text: str, title: str, subtitle: str):
+        block = ctk.CTkFrame(parent, fg_color="transparent")
+        ctk.CTkLabel(block, text=step_text, font=self._f(12), text_color=ACCENT,
+                     anchor="w").pack(anchor="w")
+        ctk.CTkLabel(block, text=title, font=self._f(23, "bold"), text_color=INK,
+                     anchor="w").pack(anchor="w", pady=(3, 0))
+        ctk.CTkLabel(block, text=subtitle, font=self._f(13), text_color=MUTED,
+                     anchor="w").pack(anchor="w", pady=(5, 0))
+        return block
 
+    def _section_label(self, parent, text: str):
+        return ctk.CTkLabel(parent, text=text, font=self._f(13, "bold"),
+                            text_color=INK_SOFT, anchor="w")
+
+    def _field_label(self, parent, text: str):
+        return ctk.CTkLabel(parent, text=text, font=self._f(13), text_color=MUTED,
+                            anchor="w")
+
+    def _menu(self, parent, var, values, command=None, width=360):
+        return ctk.CTkOptionMenu(
+            parent, variable=var, values=values, command=command or self._on_columns_changed,
+            height=34, corner_radius=8, font=self._f(13), fg_color=INSET,
+            button_color=INSET, button_hover_color=HAIRLINE, text_color=INK,
+            dropdown_fg_color=SURFACE, dropdown_text_color=INK_SOFT,
+            dropdown_hover_color=INSET, dynamic_resizing=False, width=width)
+
+    def _entry(self, parent, var, width):
+        return ctk.CTkEntry(parent, textvariable=var, width=width, height=34,
+                            corner_radius=8, fg_color=INSET, border_width=0,
+                            text_color=INK, font=self._f(13))
+
+    def _primary_btn(self, parent, text, command, width=170):
+        return ctk.CTkButton(parent, text=text, command=command, width=width, height=40,
+                             corner_radius=9, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                             text_color="#FBFAF7", font=self._f(13, "bold"))
+
+    def _ghost_btn(self, parent, text, command, width=120, accent=False):
+        edge = ACCENT if accent else FAINT
+        txt = ACCENT if accent else INK_SOFT
+        return ctk.CTkButton(parent, text=text, command=command, width=width, height=40,
+                             corner_radius=9, fg_color="transparent", border_width=1,
+                             border_color=edge, text_color=txt, hover_color=INSET,
+                             font=self._f(13))
+
+    # ------------------------------------------------------------------ #
+    #  Page 1 - Import
+    # ------------------------------------------------------------------ #
+    def _build_page_import(self, parent) -> ctk.CTkFrame:
+        page = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        page.grid_columnconfigure(0, weight=1)
+
+        self._page_heading(page, "Stap 1 van 3", "Importeren",
+                           "Kies je Excel-export en controleer de kolommen."
+                           ).grid(row=0, column=0, sticky="ew", pady=(0, 30))
+
+        self._section_label(page, "Bronbestand").grid(row=1, column=0, sticky="w",
+                                                       pady=(0, 12))
+        drop = ctk.CTkFrame(page, fg_color=INSET, corner_radius=10)
+        drop.grid(row=2, column=0, sticky="ew")
+        drop.grid_columnconfigure(0, weight=1)
+        self.file_label = ctk.CTkLabel(drop, text="Nog geen bestand gekozen", anchor="w",
+                                       font=self._f(13), text_color=MUTED)
+        self.file_label.grid(row=0, column=0, padx=18, pady=15, sticky="ew")
+        self._primary_btn(drop, "Bladeren", self._pick_excel, width=124).grid(
+            row=0, column=1, padx=10, pady=9)
+
+        sheet_row = ctk.CTkFrame(page, fg_color="transparent")
+        sheet_row.grid(row=3, column=0, sticky="w", pady=(14, 0))
+        self._field_label(sheet_row, "Werkblad").grid(row=0, column=0, padx=(0, 16),
+                                                       sticky="w")
+        self.sheet_var = ctk.StringVar(value="")
+        self.sheet_menu = self._menu(sheet_row, self.sheet_var, [""],
+                                     command=self._on_sheet_changed, width=300)
+        self.sheet_menu.grid(row=0, column=1, sticky="w")
+
+        self._section_label(page, "Kolommen").grid(row=4, column=0, sticky="w",
+                                                    pady=(38, 2))
+        ctk.CTkLabel(page, text="Automatisch herkend - pas aan waar nodig.",
+                     font=self._f(12), text_color=FAINT, anchor="w").grid(
+            row=5, column=0, sticky="w", pady=(0, 14))
+
+        cols = ctk.CTkFrame(page, fg_color="transparent")
+        cols.grid(row=6, column=0, sticky="ew")
+        cols.grid_columnconfigure(1, weight=1)
+        fields = [
+            ("Telefoonkolom", "phone_col_var", [""]),
+            ("Naamkolom", "name_col_var", ["(geen)"]),
+            ("Verzonden-kolom", "sent_col_var", ["(geen)"]),
+        ]
+        self.phone_col_var = ctk.StringVar(value="")
+        self.name_col_var = ctk.StringVar(value="")
+        self.sent_col_var = ctk.StringVar(value="(geen)")
+        var_map = {"phone_col_var": self.phone_col_var, "name_col_var": self.name_col_var,
+                   "sent_col_var": self.sent_col_var}
+        for i, (label, attr, values) in enumerate(fields):
+            self._field_label(cols, label).grid(row=i, column=0, padx=(0, 20), pady=8,
+                                                 sticky="w")
+            menu = self._menu(cols, var_map[attr], values)
+            menu.grid(row=i, column=1, pady=8, sticky="w")
+            setattr(self, attr.replace("_var", "_menu"), menu)
+
+        self._field_label(cols, "Landcode").grid(row=3, column=0, padx=(0, 20), pady=8,
+                                                  sticky="w")
+        self.country_code_var = ctk.StringVar(value="+31")
+        self._entry(cols, self.country_code_var, 88).grid(row=3, column=1, pady=8, sticky="w")
+        self.country_code_var.trace_add("write", lambda *_: self._refresh_contacts())
+
+        result = ctk.CTkFrame(page, fg_color="transparent")
+        result.grid(row=7, column=0, sticky="w", pady=(28, 0))
+        self.count_number = ctk.CTkLabel(result, text="0", font=self._f(15, "bold"),
+                                         text_color=ACCENT)
+        self.count_number.grid(row=0, column=0, padx=(0, 7))
+        self.contact_count_label = ctk.CTkLabel(result, text="geldige telefoonnummers gevonden",
+                                                font=self._f(13), text_color=MUTED)
+        self.contact_count_label.grid(row=0, column=1, sticky="w")
+
+        nav = ctk.CTkFrame(page, fg_color="transparent")
+        nav.grid(row=8, column=0, sticky="e", pady=(32, 6))
+        self._primary_btn(nav, "Verder naar bericht", lambda: self._show_page(1),
+                          width=190).pack(side="right")
+        return page
+
+    # ------------------------------------------------------------------ #
+    #  Page 2 - Message
+    # ------------------------------------------------------------------ #
+    def _build_page_message(self, parent) -> ctk.CTkFrame:
+        page = ctk.CTkFrame(parent, fg_color="transparent")
+        page.grid_columnconfigure(0, weight=1)
+        page.grid_rowconfigure(3, weight=1)
+
+        self._page_heading(page, "Stap 2 van 3", "Bericht",
+                           "Schrijf je uitnodiging. Het voorbeeld werkt mee terwijl je typt."
+                           ).grid(row=0, column=0, sticky="ew", pady=(0, 30))
+
+        top = ctk.CTkFrame(page, fg_color="transparent")
+        top.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        top.grid_columnconfigure(0, weight=1)
+        self._section_label(top, "Berichttekst").grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(top, text=PLACEHOLDER_HINT, font=self._f(12), text_color=FAINT,
+                     anchor="e").grid(row=0, column=1, sticky="e")
+
+        self.message_box = ctk.CTkTextbox(page, height=150, corner_radius=10,
+                                           font=self._f(14), fg_color=INSET, border_width=0,
+                                           text_color=INK, scrollbar_button_color=FAINT)
+        self.message_box.grid(row=2, column=0, sticky="ew")
+        self.message_box.bind("<KeyRelease>", lambda _e: self._update_preview())
+
+        preview = ctk.CTkFrame(page, fg_color="transparent")
+        preview.grid(row=3, column=0, sticky="nsew", pady=(26, 0))
+        preview.grid_columnconfigure(0, weight=1)
+        preview.grid_rowconfigure(1, weight=1)
+        self._section_label(preview, "Voorbeeld").grid(row=0, column=0, sticky="w",
+                                                        pady=(0, 12))
+        chat = ctk.CTkFrame(preview, fg_color=("#ECEAE3", "#171C1A"), corner_radius=10)
+        chat.grid(row=1, column=0, sticky="nsew")
+        chat.grid_columnconfigure(0, weight=1)
+        bubble = ctk.CTkFrame(chat, fg_color=("#DEE9E0", "#243029"), corner_radius=12)
+        bubble.grid(row=0, column=0, padx=16, pady=16, sticky="e")
+        self.preview_name_label = ctk.CTkLabel(bubble, text="Voorbeeld",
+                                               font=self._f(11, "bold"), text_color=ACCENT,
+                                               anchor="w")
+        self.preview_name_label.pack(anchor="w", padx=15, pady=(11, 0))
+        self.preview_label = ctk.CTkLabel(bubble, text="\u2014", anchor="w", justify="left",
+                                          wraplength=540, font=self._f(13), text_color=INK)
+        self.preview_label.pack(anchor="w", padx=15, pady=(2, 12))
+
+        actions = ctk.CTkFrame(page, fg_color="transparent")
+        actions.grid(row=4, column=0, sticky="ew", pady=(22, 4))
+        self._ghost_btn(actions, "Terug", lambda: self._show_page(0), width=100).pack(
+            side="left")
+        self._primary_btn(actions, "Verder naar versturen", lambda: self._show_page(2),
+                          width=200).pack(side="right")
+        self._ghost_btn(actions, "Opslaan als standaard", self._save_message_default,
+                        width=180, accent=True).pack(side="right", padx=(0, 10))
+        return page
+
+    # ------------------------------------------------------------------ #
+    #  Page 3 - Send
+    # ------------------------------------------------------------------ #
+    def _build_page_send(self, parent) -> ctk.CTkFrame:
+        page = ctk.CTkFrame(parent, fg_color="transparent")
+        page.grid_columnconfigure(0, weight=1)
+
+        self._page_heading(page, "Stap 3 van 3", "Versturen",
+                           "Controleer de opties, start de verzending en volg het verloop."
+                           ).grid(row=0, column=0, sticky="ew", pady=(0, 26))
+
+        strip = ctk.CTkFrame(page, fg_color="transparent")
+        strip.grid(row=1, column=0, sticky="ew")
+        self.stat_total = self._stat(strip, 0, "Totaal", INK_SOFT)
+        self.stat_remaining = self._stat(strip, 1, "Te versturen", INK_SOFT)
+        self.stat_sent = self._stat(strip, 2, "Verzonden", ACCENT)
+        self.stat_failed = self._stat(strip, 3, "Mislukt", WARN)
+        self._hairline(page, row=2, pady=(22, 22))
+
+        warn = ctk.CTkFrame(page, fg_color=INSET, corner_radius=9)
+        warn.grid(row=3, column=0, sticky="ew", pady=(0, 22))
+        ctk.CTkLabel(warn, text="Log eerst in op WhatsApp Web in Chrome of Edge voordat je start.",
+                     font=self._f(12), text_color=WARN, anchor="w", justify="left",
+                     wraplength=820).pack(anchor="w", padx=15, pady=11)
+
+        opts = ctk.CTkFrame(page, fg_color="transparent")
+        opts.grid(row=4, column=0, sticky="ew", pady=(0, 4))
+        self._field_label(opts, "Wachttijd (sec)").grid(row=0, column=0, padx=(0, 8),
+                                                         pady=(0, 14), sticky="w")
+        self.wait_time_var = ctk.StringVar(value="15")
+        self._entry(opts, self.wait_time_var, 66).grid(row=0, column=1, padx=(0, 28),
+                                                        pady=(0, 14), sticky="w")
+
+        def _check(parent, text, var, command=None):
+            return ctk.CTkCheckBox(parent, text=text, variable=var, command=command,
+                                   font=self._f(13), text_color=INK_SOFT, fg_color=ACCENT,
+                                   hover_color=ACCENT_HOVER, checkmark_color="#FBFAF7",
+                                   corner_radius=4, border_color=FAINT, border_width=2,
+                                   checkbox_width=20, checkbox_height=20)
+
+        self.confirm_each_var = ctk.BooleanVar(value=True)
+        _check(opts, "Bevestig na elk bericht", self.confirm_each_var).grid(
+            row=0, column=2, padx=(0, 24), pady=(0, 14), sticky="w")
+        self.skip_sent_var = ctk.BooleanVar(value=True)
+        _check(opts, "Sla al verzonden over", self.skip_sent_var, self._refresh_contacts).grid(
+            row=0, column=3, padx=(0, 24), pady=(0, 14), sticky="w")
+        self.mark_sent_var = ctk.BooleanVar(value=True)
+        _check(opts, "Vink af in Excel na verzenden", self.mark_sent_var).grid(
+            row=0, column=4, pady=(0, 14), sticky="w")
+
+        start = ctk.CTkFrame(page, fg_color="transparent")
+        start.grid(row=5, column=0, sticky="w", pady=(0, 22))
+        self._field_label(start, "Start vanaf").grid(row=0, column=0, padx=(0, 10), sticky="w")
+        self.start_var = ctk.StringVar(value="")
+        self.start_combo = ctk.CTkComboBox(
+            start, variable=self.start_var, values=["(begin)"], width=420, height=34,
+            corner_radius=8, font=self._f(12), fg_color=INSET, border_width=0,
+            button_color=INSET, button_hover_color=HAIRLINE, text_color=INK,
+            dropdown_fg_color=SURFACE, dropdown_text_color=INK_SOFT, dropdown_hover_color=INSET)
+        self.start_combo.grid(row=0, column=1, padx=(0, 8))
+        self._ghost_btn(start, "Begin", self._reset_start, width=74).grid(row=0, column=2)
+
+        btns = ctk.CTkFrame(page, fg_color="transparent")
+        btns.grid(row=6, column=0, sticky="w", pady=(0, 8))
+        self.send_btn = self._primary_btn(btns, "Start versturen", self._start_sending,
+                                          width=160)
+        self.send_btn.pack(side="left", padx=(0, 10))
+        self.stop_btn = ctk.CTkButton(
+            btns, text="Stop", command=self._stop_sending, width=92, height=40,
+            corner_radius=9, state="disabled", fg_color="transparent", border_width=1,
+            border_color=WARN, text_color=WARN, hover_color=INSET, font=self._f(13))
+        self.stop_btn.pack(side="left", padx=(0, 10))
+        self.continue_btn = ctk.CTkButton(
+            btns, text="Volgende", command=self._continue_sending, width=110, height=40,
+            corner_radius=9, state="disabled", fg_color=INK_SOFT, hover_color=INK,
+            text_color="#FBFAF7", font=self._f(13))
+        self.continue_btn.pack(side="left", padx=(0, 10))
+        self.export_btn = self._ghost_btn(btns, "Exporteer rapport", self._export_report,
+                                          width=160, accent=True)
+        self.export_btn.configure(state="disabled")
+        self.export_btn.pack(side="left")
+
+        log_head = ctk.CTkFrame(page, fg_color="transparent")
+        log_head.grid(row=7, column=0, sticky="ew", pady=(8, 12))
+        self._section_label(log_head, "Log").pack(anchor="w")
+        self.log_box = ctk.CTkTextbox(page, height=140, state="disabled", corner_radius=10,
+                                      font=self._mono(12), fg_color=SURFACE,
+                                      text_color=INK_SOFT, border_width=0,
+                                      scrollbar_button_color=FAINT)
+        self.log_box.grid(row=8, column=0, sticky="nsew")
+        page.grid_rowconfigure(8, weight=1)
+        return page
+
+    def _stat(self, parent, col: int, label: str, accent) -> ctk.CTkLabel:
+        parent.grid_columnconfigure(col, weight=1, uniform="stat")
+        cell = ctk.CTkFrame(parent, fg_color="transparent")
+        cell.grid(row=0, column=col, sticky="w")
+        value = ctk.CTkLabel(cell, text="0", font=self._f(26, "bold"), text_color=accent)
+        value.pack(anchor="w")
+        ctk.CTkLabel(cell, text=label, font=self._f(11), text_color=MUTED).pack(
+            anchor="w", pady=(1, 0))
+        return value
+
+    # ------------------------------------------------------------------ #
+    #  Navigation
+    # ------------------------------------------------------------------ #
+    def _show_page(self, index: int) -> None:
+        self._current_page = index
+        for i, page in enumerate(self._pages):
+            if i == index:
+                page.grid()
+            else:
+                page.grid_remove()
+        for step in self._steps:
+            active = step["idx"] == index
+            step["active"] = active
+            step["row"].configure(fg_color=SURFACE if active else "transparent")
+            step["accent"].configure(fg_color=ACCENT if active else "transparent")
+            step["title"].configure(text_color=INK if active else MUTED)
+
+    def _set_status(self, text: str, color=None) -> None:
+        self.status_label.configure(text=text)
+        if color is not None:
+            self.status_dot.configure(text_color=color)
+
+    # ------------------------------------------------------------------ #
+    #  Settings / appearance
+    # ------------------------------------------------------------------ #
     def _apply_settings_to_ui(self) -> None:
         self.message_box.insert("1.0", self.settings.get("message", ""))
         self.country_code_var.set(self.settings.get("country_code", "+31"))
@@ -269,11 +536,13 @@ class WhatsAppInviterApp(ctk.CTk):
     def _update_preview(self) -> None:
         message = self.message_box.get("1.0", "end").strip()
         if not message:
-            self.preview_label.configure(text="Voorbeeld: -")
+            self.preview_label.configure(text="\u2014")
+            self.preview_name_label.configure(text="Voorbeeld")
             return
         sample_name = self.contacts[0].name if self.contacts else "Jan Jansen"
         preview = personalize(message, sample_name)
-        self.preview_label.configure(text=f"Voorbeeld ({sample_name}): {preview}")
+        self.preview_name_label.configure(text=sample_name)
+        self.preview_label.configure(text=preview)
 
     def _log(self, text: str) -> None:
         self.log_box.configure(state="normal")
@@ -281,6 +550,27 @@ class WhatsAppInviterApp(ctk.CTk):
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
 
+    # ------------------------------------------------------------------ #
+    #  Stats
+    # ------------------------------------------------------------------ #
+    def _update_stats(self) -> None:
+        total = len(self.contacts)
+        already_sent = sum(1 for c in self.contacts if c.already_sent)
+        sent_col_active = self.sent_col_var.get() != "(geen)"
+        if sent_col_active and self.skip_sent_var.get():
+            remaining = total - already_sent
+        else:
+            remaining = total
+        sent = sum(1 for r in self.send_results if r.status == SendStatus.SENT.name)
+        failed = sum(1 for r in self.send_results if r.status == SendStatus.FAILED.name)
+        self.stat_total.configure(text=str(total))
+        self.stat_remaining.configure(text=str(remaining))
+        self.stat_sent.configure(text=str(sent))
+        self.stat_failed.configure(text=str(failed))
+
+    # ------------------------------------------------------------------ #
+    #  Excel handling (logic unchanged)
+    # ------------------------------------------------------------------ #
     def _pick_excel(self) -> None:
         path = filedialog.askopenfilename(
             title="Kies Excel-bestand",
@@ -290,7 +580,7 @@ class WhatsAppInviterApp(ctk.CTk):
             return
 
         self.excel_path = Path(path)
-        self.file_label.configure(text=str(self.excel_path))
+        self.file_label.configure(text=str(self.excel_path), text_color=INK)
 
         try:
             sheets = list_sheet_names(self.excel_path)
@@ -352,6 +642,7 @@ class WhatsAppInviterApp(ctk.CTk):
 
         self._refresh_contacts()
         self._log(f"Geladen: {self.excel_path.name} / {sheet_name} ({len(headers)} kolommen)")
+        self._set_status(f"Geladen: {self.excel_path.name}", color=ACCENT)
 
     def _on_columns_changed(self, *_args) -> None:
         self._refresh_contacts()
@@ -359,7 +650,9 @@ class WhatsAppInviterApp(ctk.CTk):
     def _refresh_contacts(self) -> None:
         if not self.table:
             self.contacts = []
-            self.contact_count_label.configure(text="0 geldige telefoonnummers gevonden")
+            self.count_number.configure(text="0")
+            self.contact_count_label.configure(text="geldige telefoonnummers gevonden")
+            self._update_stats()
             return
 
         phone_col = self.phone_col_var.get()
@@ -381,21 +674,21 @@ class WhatsAppInviterApp(ctk.CTk):
 
         total = len(self.contacts)
         already_sent = sum(1 for c in self.contacts if c.already_sent)
+        self.count_number.configure(text=str(total))
         if sent_col and self.skip_sent_var.get() and already_sent:
             remaining = total - already_sent
             self.contact_count_label.configure(
-                text=f"{total} geldige nummers - {already_sent} al verzonden, {remaining} nog te versturen"
+                text=f"geldige nummers  -  {already_sent} al verzonden, {remaining} te gaan"
             )
         elif sent_col and already_sent:
             self.contact_count_label.configure(
-                text=f"{total} geldige nummers ({already_sent} al gemarkeerd als verzonden)"
+                text=f"geldige nummers  ({already_sent} al gemarkeerd als verzonden)"
             )
         else:
-            self.contact_count_label.configure(
-                text=f"{total} geldige telefoonnummers gevonden"
-            )
+            self.contact_count_label.configure(text="geldige telefoonnummers gevonden")
         self._refresh_start_options()
         self._update_preview()
+        self._update_stats()
 
     def _contact_label(self, position: int, contact) -> str:
         return f"{position} - {contact.name} ({contact.phone_normalized}) - Excel-rij {contact.row_index}"
@@ -442,6 +735,9 @@ class WhatsAppInviterApp(ctk.CTk):
         save_settings(self.settings)
         messagebox.showinfo("Opgeslagen", "Instellingen opgeslagen als standaard.")
 
+    # ------------------------------------------------------------------ #
+    #  Sending (logic unchanged)
+    # ------------------------------------------------------------------ #
     def _start_sending(self) -> None:
         if not self.contacts:
             messagebox.showwarning("Geen contacten", "Importeer eerst een Excel-bestand met telefoonnummers.")
@@ -505,6 +801,8 @@ class WhatsAppInviterApp(ctk.CTk):
         self.stop_btn.configure(state="normal")
         self.continue_btn.configure(state="disabled")
         self.export_btn.configure(state="disabled")
+        self._update_stats()
+        self._set_status("Bezig met versturen\u2026", color=ACCENT)
         if start_index > 0:
             self._log(f"--- Start versturen (vanaf #{start_index + 1}, {first.name}) ---")
         else:
@@ -515,6 +813,7 @@ class WhatsAppInviterApp(ctk.CTk):
     def _stop_sending(self) -> None:
         self.sender.stop()
         self._log("Stop aangevraagd...")
+        self._set_status("Stoppen\u2026", color=WARN)
 
     def _continue_sending(self) -> None:
         self.sender.confirm_continue()
@@ -545,9 +844,11 @@ class WhatsAppInviterApp(ctk.CTk):
             )
             if event.status == SendStatus.SENT and event.contact.row_index:
                 self._sent_rows.append(event.contact.row_index)
+            self._update_stats()
 
         if event.status == SendStatus.WAITING_CONFIRM:
             self.continue_btn.configure(state="normal")
+            self._set_status("Wacht op bevestiging\u2026", color=WARN)
         elif event.status in (SendStatus.STOPPED, SendStatus.COMPLETED):
             self._finish_sending()
 
@@ -584,8 +885,11 @@ class WhatsAppInviterApp(ctk.CTk):
             sent = sum(1 for r in self.send_results if r.status == SendStatus.SENT.name)
             failed = sum(1 for r in self.send_results if r.status == SendStatus.FAILED.name)
             self._log(f"--- Klaar --- (verzonden: {sent}, mislukt: {failed})")
+            self._set_status(f"Klaar - verzonden: {sent}, mislukt: {failed}", color=ACCENT)
         else:
             self._log("--- Klaar ---")
+            self._set_status("Klaar", color=ACCENT)
+        self._update_stats()
         self._write_back_sent()
 
     def _write_back_sent(self) -> None:
