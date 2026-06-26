@@ -70,6 +70,49 @@ def _lerp_color(c1: str, c2: str, t: float) -> str:
     return _rgb_to_hex(tuple(a[i] + (b[i] - a[i]) * t for i in range(3)))
 
 
+class _ToolTip:
+    """Lightweight hover/click tooltip for a small info icon.
+
+    Colours resolve at show-time so it always matches the active light/dark mode.
+    """
+
+    def __init__(self, widget, text: str):
+        self.widget = widget
+        self.text = text
+        self._tip = None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<Button-1>", self._toggle, add="+")
+
+    def _show(self, _event=None) -> None:
+        if self._tip is not None or not self.text:
+            return
+        bg, fg, border = _resolve(INK), _resolve(BG), _resolve(FAINT)
+        x = self.widget.winfo_rootx()
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+        tip = tk.Toplevel(self.widget)
+        tip.wm_overrideredirect(True)
+        try:
+            tip.wm_attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        outer = tk.Frame(tip, background=border)
+        outer.pack()
+        tk.Label(outer, text=self.text, justify="left", wraplength=280,
+                 background=bg, foreground=fg, font=(FONT, 10), padx=11, pady=8).pack(
+            padx=1, pady=1)
+        tip.wm_geometry(f"+{x}+{y}")
+        self._tip = tip
+
+    def _hide(self, _event=None) -> None:
+        if self._tip is not None:
+            self._tip.destroy()
+            self._tip = None
+
+    def _toggle(self, _event=None) -> None:
+        self._hide() if self._tip is not None else self._show()
+
+
 class WhatsAppInviterApp(ctk.CTk):
     def __init__(self, splash: bool = True):
         super().__init__()
@@ -339,9 +382,19 @@ class WhatsAppInviterApp(ctk.CTk):
                      anchor="w").pack(anchor="w", pady=(5, 0))
         return block
 
-    def _hint_label(self, parent, text: str, wrap: int = 680):
-        return ctk.CTkLabel(parent, text=text, font=self._f(11), text_color=FAINT,
-                            anchor="w", justify="left", wraplength=wrap)
+    def _info_icon(self, parent, text: str):
+        icon = ctk.CTkLabel(parent, text="\u24d8", font=self._f(15), text_color=MUTED,
+                            cursor="hand2", width=16)
+        _ToolTip(icon, text)
+        return icon
+
+    def _field_label_info(self, parent, text: str, hint: str):
+        """A field label followed by an inline info icon revealing `hint` on hover."""
+        block = ctk.CTkFrame(parent, fg_color="transparent")
+        self._field_label(block, text).pack(side="left")
+        if hint:
+            self._info_icon(block, hint).pack(side="left", padx=(6, 0))
+        return block
 
     def _section_label(self, parent, text: str):
         return ctk.CTkLabel(parent, text=text, font=self._f(13, "bold"),
@@ -436,24 +489,19 @@ class WhatsAppInviterApp(ctk.CTk):
         self.sent_col_var = ctk.StringVar(value="(geen)")
         var_map = {"phone_col_var": self.phone_col_var, "name_col_var": self.name_col_var,
                    "sent_col_var": self.sent_col_var}
-        row = 0
-        for label, attr, values, hint in fields:
-            self._field_label(cols, label).grid(row=row, column=0, padx=(0, 20), pady=(8, 0),
-                                                 sticky="nw")
+        for i, (label, attr, values, hint) in enumerate(fields):
+            self._field_label_info(cols, label, hint).grid(
+                row=i, column=0, padx=(0, 20), pady=8, sticky="w")
             menu = self._menu(cols, var_map[attr], values)
-            menu.grid(row=row, column=1, pady=(8, 0), sticky="w")
+            menu.grid(row=i, column=1, pady=8, sticky="w")
             setattr(self, attr.replace("_var", "_menu"), menu)
-            self._hint_label(cols, hint).grid(row=row + 1, column=1, sticky="w", pady=(2, 6))
-            row += 2
 
-        self._field_label(cols, "Landcode").grid(row=row, column=0, padx=(0, 20), pady=(8, 0),
-                                                  sticky="nw")
+        self._field_label_info(
+            cols, "Landcode",
+            "Voor Nederlandse nummers meestal +31. 06-nummers worden automatisch omgezet."
+        ).grid(row=3, column=0, padx=(0, 20), pady=8, sticky="w")
         self.country_code_var = ctk.StringVar(value="+31")
-        self._entry(cols, self.country_code_var, 88).grid(row=row, column=1, pady=(8, 0),
-                                                           sticky="w")
-        self._hint_label(
-            cols, "Voor Nederlandse nummers meestal +31. 06-nummers worden automatisch omgezet."
-        ).grid(row=row + 1, column=1, sticky="w", pady=(2, 6))
+        self._entry(cols, self.country_code_var, 88).grid(row=3, column=1, pady=8, sticky="w")
         self.country_code_var.trace_add("write", lambda *_: self._refresh_contacts())
 
         result = ctk.CTkFrame(page, fg_color="transparent")
@@ -551,24 +599,41 @@ class WhatsAppInviterApp(ctk.CTk):
                      font=self._f(12), text_color=WARN, anchor="w", justify="left",
                      wraplength=820).pack(anchor="w", padx=15, pady=11)
 
-        resume = ctk.CTkFrame(page, fg_color="transparent")
-        resume.grid(row=3, column=0, sticky="ew", pady=(0, 16))
-        resume.grid_columnconfigure(1, weight=1)
-        self._field_label(resume, "Start vanaf").grid(row=0, column=0, padx=(0, 10), sticky="w")
-        start_row = ctk.CTkFrame(resume, fg_color="transparent")
-        start_row.grid(row=0, column=1, sticky="w")
-        self.start_var = ctk.StringVar(value="")
-        self.start_combo = ctk.CTkComboBox(
-            start_row, variable=self.start_var, values=["(begin)"], width=420, height=34,
-            corner_radius=8, font=self._f(12), fg_color=INSET, border_width=0,
-            button_color=INSET, button_hover_color=HAIRLINE, text_color=INK,
-            dropdown_fg_color=SURFACE, dropdown_text_color=INK_SOFT, dropdown_hover_color=INSET)
-        self.start_combo.pack(side="left", padx=(0, 8))
-        self._ghost_btn(start_row, "Begin", self._reset_start, width=74).pack(side="left")
-        self._hint_label(
-            resume,
-            "Hervat bij een specifieke student in de lijst in plaats van helemaal opnieuw."
-        ).grid(row=1, column=1, sticky="w", pady=(6, 0))
+        rng = ctk.CTkFrame(page, fg_color="transparent")
+        rng.grid(row=3, column=0, sticky="ew", pady=(0, 18))
+        head = ctk.CTkFrame(rng, fg_color="transparent")
+        head.pack(anchor="w", pady=(0, 10))
+        self._section_label(head, "Bereik").pack(side="left")
+        self._info_icon(
+            head,
+            "Kies welk deel van de lijst jij verstuurt. Zo kunnen meerdere personen "
+            "dezelfde Excel verdelen zonder dubbel werk of dubbele berichten."
+        ).pack(side="left", padx=(8, 0))
+
+        grid = ctk.CTkFrame(rng, fg_color="transparent")
+        grid.pack(anchor="w")
+        grid.grid_columnconfigure(0, minsize=52)
+
+        def _range_combo(parent, var, placeholder):
+            return ctk.CTkComboBox(
+                parent, variable=var, values=[placeholder], width=440, height=34,
+                corner_radius=8, font=self._f(12), fg_color=INSET, border_width=0,
+                button_color=INSET, button_hover_color=HAIRLINE, text_color=INK,
+                dropdown_fg_color=SURFACE, dropdown_text_color=INK_SOFT,
+                dropdown_hover_color=INSET)
+
+        self._field_label(grid, "Van").grid(row=0, column=0, sticky="w", pady=(0, 8))
+        self.start_var = ctk.StringVar(value="(begin)")
+        self.start_combo = _range_combo(grid, self.start_var, "(begin)")
+        self.start_combo.grid(row=0, column=1, sticky="w", pady=(0, 8))
+
+        self._field_label(grid, "t/m").grid(row=1, column=0, sticky="w")
+        self.end_var = ctk.StringVar(value="(einde)")
+        self.end_combo = _range_combo(grid, self.end_var, "(einde)")
+        self.end_combo.grid(row=1, column=1, sticky="w")
+
+        self._ghost_btn(grid, "Alles", self._reset_range, width=78).grid(
+            row=0, column=2, rowspan=2, padx=(12, 0))
 
         btns = ctk.CTkFrame(page, fg_color="transparent")
         btns.grid(row=4, column=0, sticky="w", pady=(0, 18))
@@ -597,7 +662,6 @@ class WhatsAppInviterApp(ctk.CTk):
         self._opts_body = ctk.CTkFrame(page, fg_color="transparent")
         self._opts_body.grid(row=6, column=0, sticky="ew", pady=(0, 8))
         self._opts_body.grid_remove()
-        self._opts_body.grid_columnconfigure(0, minsize=130)
 
         def _check(parent, text, var, command=None):
             return ctk.CTkCheckBox(parent, text=text, variable=var, command=command,
@@ -606,40 +670,32 @@ class WhatsAppInviterApp(ctk.CTk):
                                    corner_radius=4, border_color=FAINT, border_width=2,
                                    checkbox_width=20, checkbox_height=20)
 
+        def _opt_check(text, var, hint, command=None):
+            row = ctk.CTkFrame(self._opts_body, fg_color="transparent")
+            row.pack(anchor="w", pady=5, fill="x")
+            _check(row, text, var, command).pack(side="left")
+            self._info_icon(row, hint).pack(side="left", padx=(8, 0))
+
         self.confirm_each_var = ctk.BooleanVar(value=True)
-        _check(self._opts_body, "Bevestig na elk bericht", self.confirm_each_var).grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        self._hint_label(
-            self._opts_body,
-            "Pauzeer na ieder bericht zodat je kunt controleren voordat je doorgaat."
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 10))
-
+        _opt_check("Bevestig na elk bericht", self.confirm_each_var,
+                   "Pauzeer na ieder bericht zodat je kunt controleren voordat je doorgaat.")
         self.skip_sent_var = ctk.BooleanVar(value=True)
-        _check(self._opts_body, "Sla al verzonden over", self.skip_sent_var,
-               self._refresh_contacts).grid(row=2, column=0, columnspan=2, sticky="w", pady=4)
-        self._hint_label(
-            self._opts_body,
-            "Rijen die al aangevinkt zijn in Excel worden niet opnieuw aangeschreven."
-        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(2, 10))
-
+        _opt_check("Sla al verzonden over", self.skip_sent_var,
+                   "Rijen die al aangevinkt zijn in Excel worden niet opnieuw aangeschreven.",
+                   command=self._refresh_contacts)
         self.mark_sent_var = ctk.BooleanVar(value=True)
-        _check(self._opts_body, "Vink af in Excel na verzenden", self.mark_sent_var).grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=4)
-        self._hint_label(
-            self._opts_body,
-            "Zet de verzonden-kolom op TRUE na afloop, zodat je de volgende keer verder kunt."
-        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(2, 14))
+        _opt_check("Vink af in Excel na verzenden", self.mark_sent_var,
+                   "Zet de verzonden-kolom op TRUE na afloop, zodat je de volgende keer verder kunt.")
 
         wait_row = ctk.CTkFrame(self._opts_body, fg_color="transparent")
-        wait_row.grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 4))
-        self._field_label(wait_row, "Wachttijd (sec)").grid(row=0, column=0, sticky="w")
+        wait_row.pack(anchor="w", pady=(8, 4), fill="x")
+        self._field_label(wait_row, "Wachttijd (sec)").pack(side="left")
         self.wait_time_var = ctk.StringVar(value="15")
-        self._entry(wait_row, self.wait_time_var, 66).grid(row=0, column=1, padx=(12, 0),
-                                                            sticky="w")
-        self._hint_label(
-            self._opts_body,
+        self._entry(wait_row, self.wait_time_var, 66).pack(side="left", padx=(12, 0))
+        self._info_icon(
+            wait_row,
             "Pauze tussen berichten om WhatsApp niet te overbelasten (minimaal 5 seconden)."
-        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        ).pack(side="left", padx=(8, 0))
 
         log_head = ctk.CTkFrame(page, fg_color="transparent")
         log_head.grid(row=7, column=0, sticky="ew", pady=(12, 12))
@@ -1020,14 +1076,15 @@ class WhatsAppInviterApp(ctk.CTk):
         return f"{position} - {contact.name} ({contact.phone_normalized}) - Excel-rij {contact.row_index}"
 
     def _refresh_start_options(self) -> None:
-        labels = ["(begin)"] + [
-            self._contact_label(i + 1, c) for i, c in enumerate(self.contacts)
-        ]
-        self.start_combo.configure(values=labels)
+        labels = [self._contact_label(i + 1, c) for i, c in enumerate(self.contacts)]
+        self.start_combo.configure(values=["(begin)"] + labels)
+        self.end_combo.configure(values=["(einde)"] + labels)
         self.start_var.set("(begin)")
+        self.end_var.set("(einde)")
 
-    def _reset_start(self) -> None:
+    def _reset_range(self) -> None:
         self.start_var.set("(begin)")
+        self.end_var.set("(einde)")
 
     def _resolve_start_index(self) -> int:
         """Return the 0-based index in self.contacts to start from."""
@@ -1039,6 +1096,18 @@ class WhatsAppInviterApp(ctk.CTk):
         except (ValueError, IndexError):
             return 0
         return max(0, min(position - 1, len(self.contacts) - 1))
+
+    def _resolve_end_index(self) -> int:
+        """Return the 0-based index in self.contacts to stop at (inclusive)."""
+        last = len(self.contacts) - 1
+        selected = self.end_var.get().strip()
+        if not selected or selected == "(einde)":
+            return last
+        try:
+            position = int(selected.split(" - ", 1)[0])
+        except (ValueError, IndexError):
+            return last
+        return max(0, min(position - 1, last))
 
     def _save_message_default(self) -> None:
         self.settings["message"] = self.message_box.get("1.0", "end").strip()
@@ -1083,7 +1152,15 @@ class WhatsAppInviterApp(ctk.CTk):
             return
 
         start_index = self._resolve_start_index()
-        contacts_to_send = self.contacts[start_index:]
+        end_index = self._resolve_end_index()
+        if end_index < start_index:
+            messagebox.showwarning(
+                "Ongeldig bereik",
+                "De 't/m'-keuze ligt vóór de 'Van'-keuze. Pas het bereik aan.",
+            )
+            return
+        contacts_to_send = self.contacts[start_index:end_index + 1]
+        full_range = start_index == 0 and end_index == len(self.contacts) - 1
 
         sent_col_active = self.sent_col_var.get() != "(geen)"
         skipped_already = 0
@@ -1095,16 +1172,16 @@ class WhatsAppInviterApp(ctk.CTk):
         if not contacts_to_send:
             messagebox.showwarning(
                 "Geen contacten",
-                "Er zijn geen contacten om te versturen vanaf het gekozen startpunt "
+                "Er zijn geen contacten om te versturen in het gekozen bereik "
                 "(mogelijk zijn ze al gemarkeerd als verzonden).",
             )
             return
 
         first = contacts_to_send[0]
-        if start_index > 0:
+        if not full_range:
             start_note = (
-                f"\n\nStarten vanaf #{start_index + 1}: {first.name} "
-                f"({first.phone_normalized}, Excel-rij {first.row_index})."
+                f"\n\nBereik #{start_index + 1} t/m #{end_index + 1}, "
+                f"te beginnen bij {first.name} ({first.phone_normalized})."
             )
         else:
             start_note = ""
@@ -1128,8 +1205,9 @@ class WhatsAppInviterApp(ctk.CTk):
         self._update_stats()
         self._set_status("Actief", color=ACCENT)
         self._start_pulse()
-        if start_index > 0:
-            self._log(f"--- Start versturen (vanaf #{start_index + 1}, {first.name}) ---")
+        if not full_range:
+            self._log(f"--- Start versturen (bereik #{start_index + 1} t/m "
+                      f"#{end_index + 1}) ---")
         else:
             self._log("--- Start versturen ---")
 
