@@ -113,6 +113,107 @@ class _ToolTip:
         self._hide() if self._tip is not None else self._show()
 
 
+class ScrollableSelect(ctk.CTkFrame):
+    """A dropdown whose option list scrolls — built for long contact lists
+    (CustomTkinter's native combobox stacks every value with no scrolling).
+
+    Reads/writes a shared ``StringVar`` so the existing range logic is unchanged.
+    """
+
+    def __init__(self, master, app, variable, values, width: int = 440,
+                 max_visible: int = 11):
+        super().__init__(master, fg_color="transparent")
+        self._app = app
+        self._var = variable
+        self._values = list(values)
+        self._width = width
+        self._max_visible = max_visible
+        self._popup = None
+        self._click_bind = None
+
+        self._button = ctk.CTkButton(
+            self, textvariable=variable, width=width, height=34, corner_radius=8,
+            fg_color=INSET, hover_color=HAIRLINE, text_color=INK, anchor="w",
+            font=app._f(12), command=self._toggle)
+        self._button.pack(fill="x")
+        self._chevron = ctk.CTkLabel(self, text="\u25be", font=app._f(12),
+                                     text_color=MUTED, fg_color="transparent")
+        self._chevron.place(relx=1.0, rely=0.5, anchor="e", x=-10)
+        self._chevron.bind("<Button-1>", lambda _e: self._toggle())
+
+    def configure_values(self, values) -> None:
+        self._values = list(values)
+        if self._popup is not None:
+            self._close()
+
+    def _toggle(self) -> None:
+        self._close() if self._popup is not None else self._open()
+
+    def _open(self) -> None:
+        if not self._values:
+            return
+        self.update_idletasks()
+        x = self._button.winfo_rootx()
+        y = self._button.winfo_rooty() + self._button.winfo_height() + 4
+        rows = max(1, min(len(self._values), self._max_visible))
+        height = rows * 32 + 6
+        popup = tk.Toplevel(self)
+        popup.wm_overrideredirect(True)
+        try:
+            popup.wm_attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        popup.configure(background=_resolve(FAINT))
+        frame = ctk.CTkScrollableFrame(
+            popup, width=self._width - 24, height=height, fg_color=SURFACE,
+            corner_radius=0, scrollbar_button_color=FAINT,
+            scrollbar_button_hover_color=MUTED)
+        frame.pack(padx=1, pady=1, fill="both", expand=True)
+        current = self._var.get()
+        for value in self._values:
+            selected = value == current
+            ctk.CTkButton(
+                frame, text=value, anchor="w", height=30, corner_radius=6,
+                fg_color=ACCENT_SOFT if selected else "transparent",
+                hover_color=INSET, text_color=ACCENT if selected else INK_SOFT,
+                font=self._app._f(12),
+                command=lambda v=value: self._choose(v)).pack(fill="x", padx=2, pady=1)
+        popup.wm_geometry(f"{self._width}x{height + 2}+{x}+{y}")
+        popup.bind("<Escape>", lambda _e: self._close())
+        self._popup = popup
+        self._chevron.configure(text="\u25b4")
+        self._click_bind = self._app.bind_all("<Button-1>", self._on_global_click, add="+")
+
+    def _choose(self, value: str) -> None:
+        self._var.set(value)
+        self._close()
+
+    def _on_global_click(self, event) -> None:
+        if self._popup is None:
+            return
+        clicked = str(event.widget)
+        if (clicked.startswith(str(self._popup))
+                or clicked.startswith(str(self._button))
+                or clicked == str(self._chevron)):
+            return
+        self._close()
+
+    def _close(self) -> None:
+        if self._click_bind is not None:
+            try:
+                self._app.unbind_all("<Button-1>")
+            except tk.TclError:
+                pass
+            self._click_bind = None
+        if self._popup is not None:
+            self._popup.destroy()
+            self._popup = None
+        try:
+            self._chevron.configure(text="\u25be")
+        except tk.TclError:
+            pass
+
+
 class WhatsAppInviterApp(ctk.CTk):
     def __init__(self, splash: bool = True):
         super().__init__()
@@ -614,22 +715,14 @@ class WhatsAppInviterApp(ctk.CTk):
         grid.pack(anchor="w")
         grid.grid_columnconfigure(0, minsize=52)
 
-        def _range_combo(parent, var, placeholder):
-            return ctk.CTkComboBox(
-                parent, variable=var, values=[placeholder], width=440, height=34,
-                corner_radius=8, font=self._f(12), fg_color=INSET, border_width=0,
-                button_color=INSET, button_hover_color=HAIRLINE, text_color=INK,
-                dropdown_fg_color=SURFACE, dropdown_text_color=INK_SOFT,
-                dropdown_hover_color=INSET)
-
         self._field_label(grid, "Van").grid(row=0, column=0, sticky="w", pady=(0, 8))
         self.start_var = ctk.StringVar(value="(begin)")
-        self.start_combo = _range_combo(grid, self.start_var, "(begin)")
+        self.start_combo = ScrollableSelect(grid, self, self.start_var, ["(begin)"], width=440)
         self.start_combo.grid(row=0, column=1, sticky="w", pady=(0, 8))
 
         self._field_label(grid, "t/m").grid(row=1, column=0, sticky="w")
         self.end_var = ctk.StringVar(value="(einde)")
-        self.end_combo = _range_combo(grid, self.end_var, "(einde)")
+        self.end_combo = ScrollableSelect(grid, self, self.end_var, ["(einde)"], width=440)
         self.end_combo.grid(row=1, column=1, sticky="w")
 
         self._ghost_btn(grid, "Alles", self._reset_range, width=78).grid(
@@ -1077,8 +1170,8 @@ class WhatsAppInviterApp(ctk.CTk):
 
     def _refresh_start_options(self) -> None:
         labels = [self._contact_label(i + 1, c) for i, c in enumerate(self.contacts)]
-        self.start_combo.configure(values=["(begin)"] + labels)
-        self.end_combo.configure(values=["(einde)"] + labels)
+        self.start_combo.configure_values(["(begin)"] + labels)
+        self.end_combo.configure_values(["(einde)"] + labels)
         self.start_var.set("(begin)")
         self.end_var.set("(einde)")
 
