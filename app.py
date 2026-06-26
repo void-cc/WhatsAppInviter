@@ -1304,8 +1304,7 @@ class WhatsAppInviterApp(ctk.CTk):
         ):
             return
 
-        rows = self._sent_rows
-        self._sent_rows = []
+        rows = list(self._sent_rows)
         try:
             updated = mark_rows_sent(
                 self.excel_path,
@@ -1314,6 +1313,7 @@ class WhatsAppInviterApp(ctk.CTk):
                 header_row=self.table.header_row,
                 row_numbers=rows,
             )
+            self._sent_rows = []
             self._log(f"{updated} rij(en) afgevinkt in Excel-kolom '{sent_col}'.")
             self._load_sheet(self.sheet_var.get())
         except PermissionError:
