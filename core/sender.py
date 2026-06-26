@@ -11,6 +11,7 @@ from typing import Callable, Optional
 import pywhatkit
 
 from core.excel_loader import ContactRow
+from core.message import personalize_for
 
 
 class SendStatus(Enum):
@@ -92,9 +93,10 @@ class WhatsAppSender:
                 break
 
             try:
+                personalized = personalize_for(message, contact)
                 pywhatkit.sendwhatmsg_instantly(
                     phone_no=contact.phone_normalized,
-                    message=message,
+                    message=personalized,
                     wait_time=self.wait_time,
                     tab_close=True,
                 )
