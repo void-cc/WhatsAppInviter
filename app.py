@@ -339,13 +339,6 @@ class WhatsAppInviterApp(ctk.CTk):
                      anchor="w").pack(anchor="w", pady=(5, 0))
         return block
 
-    def _page_step(self, parent, step_text: str):
-        """Lightweight step label when another element owns the page title."""
-        block = ctk.CTkFrame(parent, fg_color="transparent")
-        ctk.CTkLabel(block, text=step_text, font=self._f(12), text_color=ACCENT,
-                     anchor="w").pack(anchor="w")
-        return block
-
     def _hint_label(self, parent, text: str, wrap: int = 680):
         return ctk.CTkLabel(parent, text=text, font=self._f(11), text_color=FAINT,
                             anchor="w", justify="left", wraplength=wrap)
@@ -431,26 +424,36 @@ class WhatsAppInviterApp(ctk.CTk):
         cols.grid_columnconfigure(0, minsize=170)
         cols.grid_columnconfigure(1, weight=1)
         fields = [
-            ("Telefoonkolom", "phone_col_var", [""]),
-            ("Naamkolom", "name_col_var", ["(geen)"]),
-            ("Verzonden-kolom", "sent_col_var", ["(geen)"]),
+            ("Telefoonkolom", "phone_col_var", [""],
+             "Kolom met mobiele nummers, bijvoorbeeld Mobiel telefoonnummer."),
+            ("Naamkolom", "name_col_var", ["(geen)"],
+             "Voor {voornaam} en {naam} in je bericht. Kies (geen) als de kolom ontbreekt."),
+            ("Verzonden-kolom", "sent_col_var", ["(geen)"],
+             "Excel-vinkjes (TRUE/FALSE) om bij te houden wie al een bericht kreeg."),
         ]
         self.phone_col_var = ctk.StringVar(value="")
         self.name_col_var = ctk.StringVar(value="")
         self.sent_col_var = ctk.StringVar(value="(geen)")
         var_map = {"phone_col_var": self.phone_col_var, "name_col_var": self.name_col_var,
                    "sent_col_var": self.sent_col_var}
-        for i, (label, attr, values) in enumerate(fields):
-            self._field_label(cols, label).grid(row=i, column=0, padx=(0, 20), pady=8,
-                                                 sticky="w")
+        row = 0
+        for label, attr, values, hint in fields:
+            self._field_label(cols, label).grid(row=row, column=0, padx=(0, 20), pady=(8, 0),
+                                                 sticky="nw")
             menu = self._menu(cols, var_map[attr], values)
-            menu.grid(row=i, column=1, pady=8, sticky="w")
+            menu.grid(row=row, column=1, pady=(8, 0), sticky="w")
             setattr(self, attr.replace("_var", "_menu"), menu)
+            self._hint_label(cols, hint).grid(row=row + 1, column=1, sticky="w", pady=(2, 6))
+            row += 2
 
-        self._field_label(cols, "Landcode").grid(row=3, column=0, padx=(0, 20), pady=8,
-                                                  sticky="w")
+        self._field_label(cols, "Landcode").grid(row=row, column=0, padx=(0, 20), pady=(8, 0),
+                                                  sticky="nw")
         self.country_code_var = ctk.StringVar(value="+31")
-        self._entry(cols, self.country_code_var, 88).grid(row=3, column=1, pady=8, sticky="w")
+        self._entry(cols, self.country_code_var, 88).grid(row=row, column=1, pady=(8, 0),
+                                                           sticky="w")
+        self._hint_label(
+            cols, "Voor Nederlandse nummers meestal +31. 06-nummers worden automatisch omgezet."
+        ).grid(row=row + 1, column=1, sticky="w", pady=(2, 6))
         self.country_code_var.trace_add("write", lambda *_: self._refresh_contacts())
 
         result = ctk.CTkFrame(page, fg_color="transparent")
@@ -535,20 +538,40 @@ class WhatsAppInviterApp(ctk.CTk):
         page.pack(fill="both", expand=True, padx=46, pady=(32, 18))
         page.grid_columnconfigure(0, weight=1)
 
-        self._page_step(page, "Stap 3 van 3").grid(row=0, column=0, sticky="w",
-                                                      pady=(0, 10))
+        self._page_heading(page, "Stap 3 van 3", "Versturen",
+                           "Volg het verloop en start wanneer je klaar bent."
+                           ).grid(row=0, column=0, sticky="ew", pady=(0, 20))
 
         self._build_send_progress(page).grid(row=1, column=0, sticky="ew")
 
         warn = ctk.CTkFrame(page, fg_color="transparent", corner_radius=9, border_width=1,
                             border_color=HAIRLINE)
-        warn.grid(row=2, column=0, sticky="ew", pady=(22, 20))
+        warn.grid(row=2, column=0, sticky="ew", pady=(18, 16))
         ctk.CTkLabel(warn, text="Log eerst in op WhatsApp Web in Chrome of Edge voordat je start.",
                      font=self._f(12), text_color=WARN, anchor="w", justify="left",
                      wraplength=820).pack(anchor="w", padx=15, pady=11)
 
+        resume = ctk.CTkFrame(page, fg_color="transparent")
+        resume.grid(row=3, column=0, sticky="ew", pady=(0, 16))
+        resume.grid_columnconfigure(1, weight=1)
+        self._field_label(resume, "Start vanaf").grid(row=0, column=0, padx=(0, 10), sticky="w")
+        start_row = ctk.CTkFrame(resume, fg_color="transparent")
+        start_row.grid(row=0, column=1, sticky="w")
+        self.start_var = ctk.StringVar(value="")
+        self.start_combo = ctk.CTkComboBox(
+            start_row, variable=self.start_var, values=["(begin)"], width=420, height=34,
+            corner_radius=8, font=self._f(12), fg_color=INSET, border_width=0,
+            button_color=INSET, button_hover_color=HAIRLINE, text_color=INK,
+            dropdown_fg_color=SURFACE, dropdown_text_color=INK_SOFT, dropdown_hover_color=INSET)
+        self.start_combo.pack(side="left", padx=(0, 8))
+        self._ghost_btn(start_row, "Begin", self._reset_start, width=74).pack(side="left")
+        self._hint_label(
+            resume,
+            "Hervat bij een specifieke student in de lijst in plaats van helemaal opnieuw."
+        ).grid(row=1, column=1, sticky="w", pady=(6, 0))
+
         btns = ctk.CTkFrame(page, fg_color="transparent")
-        btns.grid(row=3, column=0, sticky="w", pady=(0, 18))
+        btns.grid(row=4, column=0, sticky="w", pady=(0, 18))
         self.send_btn = self._primary_btn(btns, "Start versturen", self._start_sending,
                                           width=160)
         self.send_btn.pack(side="left", padx=(0, 10))
@@ -562,7 +585,7 @@ class WhatsAppInviterApp(ctk.CTk):
         self._layout_send_btns()
 
         opts_head = ctk.CTkFrame(page, fg_color="transparent")
-        opts_head.grid(row=4, column=0, sticky="ew", pady=(0, 6))
+        opts_head.grid(row=5, column=0, sticky="ew", pady=(0, 6))
         self._opts_open = False
         self.opts_toggle_btn = ctk.CTkButton(
             opts_head, text="Opties  \u25b8", command=self._toggle_send_opts,
@@ -572,7 +595,7 @@ class WhatsAppInviterApp(ctk.CTk):
         self.opts_toggle_btn.pack(anchor="w")
 
         self._opts_body = ctk.CTkFrame(page, fg_color="transparent")
-        self._opts_body.grid(row=5, column=0, sticky="ew", pady=(0, 8))
+        self._opts_body.grid(row=6, column=0, sticky="ew", pady=(0, 8))
         self._opts_body.grid_remove()
         self._opts_body.grid_columnconfigure(0, minsize=130)
 
@@ -616,33 +639,19 @@ class WhatsAppInviterApp(ctk.CTk):
         self._hint_label(
             self._opts_body,
             "Pauze tussen berichten om WhatsApp niet te overbelasten (minimaal 5 seconden)."
-        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(2, 14))
-
-        start = ctk.CTkFrame(self._opts_body, fg_color="transparent")
-        start.grid(row=8, column=0, columnspan=2, sticky="w", pady=(0, 4))
-        self._field_label(start, "Start vanaf").grid(row=0, column=0, padx=(0, 10), sticky="w")
-        self.start_var = ctk.StringVar(value="")
-        self.start_combo = ctk.CTkComboBox(
-            start, variable=self.start_var, values=["(begin)"], width=420, height=34,
-            corner_radius=8, font=self._f(12), fg_color=INSET, border_width=0,
-            button_color=INSET, button_hover_color=HAIRLINE, text_color=INK,
-            dropdown_fg_color=SURFACE, dropdown_text_color=INK_SOFT, dropdown_hover_color=INSET)
-        self.start_combo.grid(row=0, column=1, padx=(0, 8))
-        self._ghost_btn(start, "Begin", self._reset_start, width=74).grid(row=0, column=2)
-        self._hint_label(
-            self._opts_body,
-            "Hervat bij een specifieke student in de lijst in plaats van helemaal opnieuw."
-        ).grid(row=9, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(2, 0))
 
         log_head = ctk.CTkFrame(page, fg_color="transparent")
-        log_head.grid(row=6, column=0, sticky="ew", pady=(12, 12))
+        log_head.grid(row=7, column=0, sticky="ew", pady=(12, 12))
         self._section_label(log_head, "Log").pack(anchor="w")
         self.log_box = ctk.CTkTextbox(page, height=140, state="disabled", corner_radius=10,
                                       font=self._mono(12), fg_color=SURFACE,
                                       text_color=INK_SOFT, border_width=1,
                                       border_color=HAIRLINE, scrollbar_button_color=FAINT)
-        self.log_box.grid(row=7, column=0, sticky="nsew")
-        page.grid_rowconfigure(7, weight=1)
+        self.log_box.grid(row=8, column=0, sticky="nsew")
+        page.grid_rowconfigure(8, weight=1)
+        self._log_placeholder = True
+        self._show_log_placeholder()
         return outer
 
     def _toggle_send_opts(self) -> None:
@@ -671,8 +680,8 @@ class WhatsAppInviterApp(ctk.CTk):
         box.grid_columnconfigure(0, weight=1)
 
         self.progress_headline = ctk.CTkLabel(
-            box, text="Nog geen contacten geladen", font=self._f(20, "bold"),
-            text_color=INK, anchor="w")
+            box, text="Nog geen contacten geladen", font=self._f(17, "bold"),
+            text_color=INK_SOFT, anchor="w")
         self.progress_headline.grid(row=0, column=0, sticky="w")
 
         track = ctk.CTkFrame(box, height=14, corner_radius=7, fg_color=INSET)
@@ -819,8 +828,18 @@ class WhatsAppInviterApp(ctk.CTk):
         self.preview_name_label.configure(text=sample_name)
         self.preview_label.configure(text=preview)
 
+    def _show_log_placeholder(self) -> None:
+        self.log_box.configure(state="normal")
+        self.log_box.delete("1.0", "end")
+        self.log_box.insert("1.0", "Hier verschijnt het verloop zodra je start.")
+        self.log_box.configure(state="disabled")
+        self._log_placeholder = True
+
     def _log(self, text: str) -> None:
         self.log_box.configure(state="normal")
+        if self._log_placeholder:
+            self.log_box.delete("1.0", "end")
+            self._log_placeholder = False
         self.log_box.insert("end", text + "\n")
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
