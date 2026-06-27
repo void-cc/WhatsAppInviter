@@ -31,7 +31,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: WhatsAppInviter-windows
-          path: dist/WhatsAppInviter-windows.exe
+          path: dist/WhatsAppInviter.exe
 
   build-macos:
     runs-on: macos-latest
@@ -83,5 +83,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/WhatsAppInviter-windows.exe
+            artifacts/WhatsAppInviter.exe
             artifacts/WhatsAppInviter-macOS.zip
