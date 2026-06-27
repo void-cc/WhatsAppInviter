@@ -27,6 +27,9 @@ jobs:
       - name: Build executable
         run: pyinstaller app.spec --noconfirm
 
+      - name: Rename executable
+        run: mv dist/WhatsAppInviter.exe dist/WhatsAppInviter-windows.exe
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
