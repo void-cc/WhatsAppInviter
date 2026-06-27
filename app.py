@@ -201,7 +201,7 @@ class ScrollableSelect(ctk.CTkFrame):
     def _close(self) -> None:
         if self._click_bind is not None:
             try:
-                self._app.unbind_all("<Button-1>")
+                self._app.unbind("<Button-1>", self._click_bind)
             except tk.TclError:
                 pass
             self._click_bind = None
