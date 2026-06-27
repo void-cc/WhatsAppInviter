@@ -182,7 +182,7 @@ class ScrollableSelect(ctk.CTkFrame):
         popup.bind("<Escape>", lambda _e: self._close())
         self._popup = popup
         self._chevron.configure(text="\u25b4")
-        self._click_bind = self._app.bind_all("<Button-1>", self._on_global_click, add="+")
+        self._click_bind = self._app.bind("<Button-1>", self._on_global_click, add="+")
 
     def _choose(self, value: str) -> None:
         self._var.set(value)
