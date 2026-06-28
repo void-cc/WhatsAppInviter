@@ -3,6 +3,7 @@ module github.com/void-cc/WhatsAppInviter/apps/go
 go 1.25.0
 
 require (
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/wailsapp/wails/v2 v2.9.2
 	github.com/xuri/excelize/v2 v2.9.0
 	go.mau.fi/whatsmeow v0.0.0-20260622185415-5f04eac6dbbb

@@ -360,8 +360,19 @@ $('#export-report').addEventListener('click', async () => {
   }
 });
 
-EventsOn('qr-code', (code: unknown) => {
-  $('#qr-code').textContent = String(code);
+EventsOn('qr-code', (payload: unknown) => {
+  const data = (payload ?? {}) as { image?: string; raw?: string };
+  const img = $('#qr-image') as HTMLImageElement;
+  const pre = $('#qr-code') as HTMLPreElement;
+  if (data.image) {
+    img.src = data.image;
+    img.classList.remove('hidden');
+    pre.classList.add('hidden');
+  } else {
+    pre.textContent = data.raw ?? String(payload);
+    pre.classList.remove('hidden');
+    img.classList.add('hidden');
+  }
   $('#qr-container').classList.remove('hidden');
 });
 

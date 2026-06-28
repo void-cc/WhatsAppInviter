@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/skip2/go-qrcode"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/void-cc/WhatsAppInviter/apps/go/internal/excel"
@@ -295,14 +297,30 @@ func (a *App) WhatsAppLoginStatus() map[string]any {
 	return map[string]any{"loggedIn": loggedIn, "phone": phone}
 }
 
-// WhatsAppPair starts QR pairing; QR codes are emitted as "qr-code" events.
+// WhatsAppPair starts QR pairing; QR codes are emitted as "qr-code" events
+// containing a PNG data URL ready to render in an <img>.
 func (a *App) WhatsAppPair() error {
 	if a.waClient == nil {
 		return fmt.Errorf("WhatsApp-client niet geïnitialiseerd")
 	}
 	return a.waClient.Pair(a.ctx, func(code string) {
-		runtime.EventsEmit(a.ctx, "qr-code", code)
+		dataURL, err := qrDataURL(code)
+		if err != nil {
+			// Fall back to the raw payload so the user can still copy it.
+			runtime.EventsEmit(a.ctx, "qr-code", map[string]string{"raw": code})
+			return
+		}
+		runtime.EventsEmit(a.ctx, "qr-code", map[string]string{"image": dataURL, "raw": code})
 	})
+}
+
+// qrDataURL renders a QR payload to a base64-encoded PNG data URL.
+func qrDataURL(code string) (string, error) {
+	png, err := qrcode.Encode(code, qrcode.Medium, 320)
+	if err != nil {
+		return "", err
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), nil
 }
 
 // WhatsAppConnect reconnects an existing session.
