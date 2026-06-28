@@ -18,6 +18,23 @@ def _settings_path() -> Path:
     return _app_data_dir() / "settings.json"
 
 
+def os_prefers_reduced_motion() -> bool:
+    """Return True when the OS accessibility setting requests reduced motion."""
+    if sys.platform == "win32":
+        try:
+            import winreg
+
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Accessibility",
+            ) as key:
+                value, _ = winreg.QueryValueEx(key, "AnimationEffects")
+                return int(value) == 0
+        except OSError:
+            pass
+    return False
+
+
 def _bundled_default_message() -> str:
     """Load shipped default message from assets."""
     if getattr(sys, "frozen", False):
@@ -42,6 +59,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "appearance": "Systeem",
     "skip_sent": True,
     "mark_sent": True,
+    "reduced_motion": None,
 }
 
 
@@ -58,6 +76,9 @@ def load_settings() -> dict[str, Any]:
 
     if not settings.get("message"):
         settings["message"] = _bundled_default_message()
+
+    if settings.get("reduced_motion") is None:
+        settings["reduced_motion"] = os_prefers_reduced_motion()
 
     return settings
 
