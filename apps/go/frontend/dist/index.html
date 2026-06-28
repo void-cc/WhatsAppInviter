@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp Inviter</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="header-mark">
+        <h1>WhatsApp Inviter</h1>
+        <p class="header-sub">Hogeschool Leiden · studenten uitnodigen via WhatsApp</p>
+      </div>
+      <div class="theme-toggle" role="group" aria-label="Thema">
+        <button data-theme="light" class="theme-btn">Licht</button>
+        <button data-theme="dark" class="theme-btn">Donker</button>
+        <button data-theme="system" class="theme-btn active">Systeem</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="sidebar">
+        <p class="sidebar-label">Stappen</p>
+        <button class="step active" data-page="0">
+          <span class="step-title">Importeren</span>
+          <span class="step-sub">Excel & kolommen</span>
+        </button>
+        <button class="step" data-page="1">
+          <span class="step-title">Bericht</span>
+          <span class="step-sub">Tekst & voorbeeld</span>
+        </button>
+        <button class="step" data-page="2">
+          <span class="step-title">Versturen</span>
+          <span class="step-sub">Verzenden & log</span>
+        </button>
+      </nav>
+
+      <main class="content">
+        <!-- Page 1: Import -->
+        <section class="page active" data-page="0">
+          <div class="page-heading">
+            <span class="step-badge">Stap 1 van 3</span>
+            <h2>Importeren</h2>
+            <p>Kies je Excel-export en controleer de kolommen.</p>
+          </div>
+
+          <h3 class="section-label">Bronbestand</h3>
+          <div class="file-row">
+            <span id="file-label" class="file-label muted">Kies een Excel-bestand om te beginnen</span>
+            <button id="pick-excel" class="btn secondary">Bladeren</button>
+          </div>
+
+          <div class="field-row">
+            <label>Werkblad</label>
+            <select id="sheet-select"></select>
+          </div>
+
+          <h3 class="section-label">Kolommen</h3>
+          <p class="hint">Automatisch herkend — pas aan waar nodig.</p>
+
+          <div class="field-row">
+            <label>Telefoonkolom</label>
+            <select id="phone-col"></select>
+          </div>
+          <div class="field-row">
+            <label>Naamkolom</label>
+            <select id="name-col"></select>
+          </div>
+          <div class="field-row">
+            <label>Verzonden-kolom</label>
+            <select id="sent-col"></select>
+          </div>
+          <div class="field-row">
+            <label>Landcode</label>
+            <input id="country-code" type="text" value="+31" class="input short" />
+          </div>
+
+          <div class="count-row">
+            <strong id="contact-count">0</strong>
+            <span id="contact-label">importeer een Excel-bestand</span>
+          </div>
+
+          <div class="nav-row">
+            <button id="to-message" class="btn primary">Verder naar bericht</button>
+          </div>
+        </section>
+
+        <!-- Page 2: Message -->
+        <section class="page" data-page="1">
+          <div class="page-heading">
+            <span class="step-badge">Stap 2 van 3</span>
+            <h2>Bericht</h2>
+            <p>Schrijf je uitnodiging. Het voorbeeld werkt mee terwijl je typt.</p>
+          </div>
+
+          <div class="field-header">
+            <h3 class="section-label">Berichttekst</h3>
+            <span class="hint" id="placeholder-hint"></span>
+          </div>
+          <textarea id="message-box" rows="8"></textarea>
+
+          <h3 class="section-label">Voorbeeld</h3>
+          <div class="chat-preview">
+            <div class="bubble">
+              <strong id="preview-name">Voorbeeld</strong>
+              <p id="preview-text">—</p>
+            </div>
+          </div>
+
+          <div class="nav-row">
+            <button id="back-import" class="btn ghost">Terug</button>
+            <button id="save-default" class="btn ghost accent">Opslaan als standaard</button>
+            <button id="to-send" class="btn primary">Verder naar versturen</button>
+          </div>
+        </section>
+
+        <!-- Page 3: Send -->
+        <section class="page" data-page="2">
+          <div class="page-heading">
+            <span class="step-badge">Stap 3 van 3</span>
+            <h2>Versturen</h2>
+            <p>Volg het verloop en start wanneer je klaar bent.</p>
+          </div>
+
+          <div class="progress-block">
+            <h3 id="progress-headline">Nog geen contacten geladen</h3>
+            <div class="progress-track">
+              <div id="seg-sent" class="seg sent"></div>
+              <div id="seg-failed" class="seg failed"></div>
+            </div>
+            <div class="legend">
+              <span><span class="dot sent"></span> <strong id="stat-sent">0</strong> verzonden</span>
+              <span><span class="dot faint"></span> <strong id="stat-remaining">0</strong> te gaan</span>
+              <span id="legend-failed" class="hidden"><span class="dot failed"></span> <strong id="stat-failed">0</strong> mislukt</span>
+            </div>
+          </div>
+
+          <div class="warn-box">
+            Koppel WhatsApp via de QR-code hieronder. Geen browser meer nodig — berichten gaan direct via WhatsApp.
+          </div>
+
+          <div class="wa-login">
+            <div class="wa-status">
+              <span id="wa-status-dot" class="dot faint"></span>
+              <span id="wa-status-text">Niet gekoppeld</span>
+            </div>
+            <div id="qr-container" class="qr-container hidden">
+              <p>Scan met WhatsApp op je telefoon:</p>
+              <pre id="qr-code" class="qr-code"></pre>
+            </div>
+            <div class="btn-row">
+              <button id="wa-pair" class="btn secondary">QR-code tonen</button>
+              <button id="wa-connect" class="btn ghost">Opnieuw verbinden</button>
+              <button id="wa-logout" class="btn ghost">Uitloggen</button>
+            </div>
+          </div>
+
+          <h3 class="section-label">Bereik</h3>
+          <div class="field-row">
+            <label>Van</label>
+            <select id="start-select"><option>(begin)</option></select>
+          </div>
+          <div class="field-row">
+            <label>t/m</label>
+            <select id="end-select"><option>(einde)</option></select>
+          </div>
+
+          <div class="btn-row">
+            <button id="start-send" class="btn primary">Start versturen</button>
+            <button id="stop-send" class="btn ghost hidden">Stop</button>
+            <button id="continue-send" class="btn ghost hidden">Volgende</button>
+            <button id="export-report" class="btn ghost" disabled>Exporteer rapport</button>
+          </div>
+
+          <details class="opts">
+            <summary>Opties</summary>
+            <label><input type="checkbox" id="confirm-each" checked /> Bevestig na elk bericht</label>
+            <label><input type="checkbox" id="skip-sent" checked /> Sla al verzonden over</label>
+            <label><input type="checkbox" id="mark-sent" checked /> Vink af in Excel na verzenden</label>
+            <label><input type="checkbox" id="reduced-motion" /> Verminder beweging</label>
+            <div class="field-row">
+              <label>Wachttijd (sec)</label>
+              <input id="wait-time" type="number" value="15" min="5" class="input short" />
+            </div>
+          </details>
+
+          <h3 class="section-label">Log</h3>
+          <pre id="log-box" class="log-box">Hier verschijnt het verloop zodra je start.</pre>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      <span id="status-dot" class="dot faint"></span>
+      <span id="status-text">Klaar om te beginnen</span>
+    </footer>
+  </div>
+
+  <script src="./main.js"></script>
+</body>
+</html>
