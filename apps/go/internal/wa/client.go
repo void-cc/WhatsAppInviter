@@ -22,6 +22,12 @@ import (
 	"github.com/void-cc/WhatsAppInviter/apps/go/internal/settings"
 )
 
+func sqliteDSN(path string) string {
+	// modernc.org/sqlite uses _pragma=…, not mattn-style _foreign_keys=on.
+	normalized := strings.ReplaceAll(path, "\\", "/")
+	return fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)", normalized)
+}
+
 // SendStatus mirrors the Python sender statuses.
 type SendStatus string
 
@@ -79,7 +85,7 @@ func (c *Client) ensureClient(ctx context.Context) error {
 	}
 
 	dbLog := waLog.Noop
-	container, err := sqlstore.New(ctx, "sqlite", fmt.Sprintf("file:%s?_foreign_keys=on", c.dbPath), dbLog)
+	container, err := sqlstore.New(ctx, "sqlite", sqliteDSN(c.dbPath), dbLog)
 	if err != nil {
 		return fmt.Errorf("session store: %w", err)
 	}
