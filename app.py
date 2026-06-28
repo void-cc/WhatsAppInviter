@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import sys
 import time
 import tkinter as tk
 from pathlib import Path
@@ -21,10 +22,10 @@ from core.excel_loader import (
     load_sheet_table,
     mark_rows_sent,
 )
-from core.message import PLACEHOLDER_HINT, personalize
+from core.message import FALLBACK_NAME, PLACEHOLDER_HINT, PREVIEW_SAMPLE_NAME, personalize
 from core.report import SendResult, export_results
 from core.sender import SendEvent, SendStatus, WhatsAppSender
-from core.settings import load_settings, save_settings
+from core.settings import load_settings, os_prefers_reduced_motion, save_settings
 
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("green")
@@ -37,13 +38,15 @@ SURFACE = ("#FBFAF7", "#1B201F")
 INSET = ("#EDEBE5", "#242A28")
 INK = ("#232724", "#E6E8E4")
 INK_SOFT = ("#3F443F", "#BEC3BE")
-MUTED = ("#5C615B", "#888E88")
-FAINT = ("#6E736C", "#565C58")
+MUTED = ("#5C615B", "#949A94")
+FAINT = ("#6E736C", "#727874")
 HAIRLINE = ("#E5E3DC", "#272D2A")
 ACCENT = ("#2F6E4F", "#54A37C")
 ACCENT_HOVER = ("#296044", "#62b389")
 ACCENT_SOFT = ("#E7EFE9", "#1F2D27")
-WARN = ("#7A6328", "#CBB173")
+ON_ACCENT = ("#FBFAF7", "#10211A")
+FOCUS_RING = ("#2F6E4F", "#62B389")
+WARN = ("#7A6328", "#D4BC82")
 
 FONT = "Segoe UI"
 
@@ -130,16 +133,33 @@ class ScrollableSelect(ctk.CTkFrame):
         self._max_visible = max_visible
         self._popup = None
         self._click_bind = None
+        self._key_bind = None
+        self._highlight_idx = -1
+        self._option_widgets: list[ctk.CTkButton] = []
 
         self._button = ctk.CTkButton(
             self, textvariable=variable, width=width, height=34, corner_radius=8,
             fg_color=INSET, hover_color=HAIRLINE, text_color=INK, anchor="w",
-            font=app._f(12), command=self._toggle)
+            font=app._f(12), command=self._toggle, border_width=0,
+            border_color=FOCUS_RING)
         self._button.pack(fill="x")
         self._chevron = ctk.CTkLabel(self, text="\u25be", font=app._f(12),
                                      text_color=MUTED, fg_color="transparent")
         self._chevron.place(relx=1.0, rely=0.5, anchor="e", x=-10)
         self._chevron.bind("<Button-1>", lambda _e: self._toggle())
+
+        self._button.bind("<Return>", self._on_open_key)
+        self._button.bind("<Down>", self._on_open_key)
+        self._button.bind("<FocusIn>", lambda _e: self._set_focus_ring(True))
+        self._button.bind("<FocusOut>", lambda _e: self._set_focus_ring(False))
+
+    def _set_focus_ring(self, active: bool) -> None:
+        self._button.configure(border_width=2 if active else 0)
+
+    def _on_open_key(self, _event=None):
+        if self._popup is None:
+            self._open()
+        return "break"
 
     def configure_values(self, values) -> None:
         self._values = list(values)
@@ -148,6 +168,43 @@ class ScrollableSelect(ctk.CTkFrame):
 
     def _toggle(self) -> None:
         self._close() if self._popup is not None else self._open()
+
+    def _current_index(self) -> int:
+        current = self._var.get()
+        try:
+            return self._values.index(current)
+        except ValueError:
+            return 0
+
+    def _highlight_option(self, idx: int) -> None:
+        if not self._option_widgets or idx < 0 or idx >= len(self._option_widgets):
+            return
+        self._highlight_idx = idx
+        for i, btn in enumerate(self._option_widgets):
+            selected = i == idx
+            btn.configure(
+                fg_color=ACCENT_SOFT if selected else "transparent",
+                text_color=ACCENT if selected else INK_SOFT,
+            )
+
+    def _on_popup_key(self, event) -> str:
+        if self._popup is None or not self._option_widgets:
+            return "break"
+        key = event.keysym
+        if key in ("Escape",):
+            self._close()
+        elif key in ("Return", "space"):
+            if 0 <= self._highlight_idx < len(self._values):
+                self._choose(self._values[self._highlight_idx])
+        elif key == "Down":
+            self._highlight_option(min(self._highlight_idx + 1, len(self._values) - 1))
+        elif key == "Up":
+            self._highlight_option(max(self._highlight_idx - 1, 0))
+        elif key == "Home":
+            self._highlight_option(0)
+        elif key == "End":
+            self._highlight_option(len(self._values) - 1)
+        return "break"
 
     def _open(self) -> None:
         if not self._values:
@@ -170,19 +227,26 @@ class ScrollableSelect(ctk.CTkFrame):
             scrollbar_button_hover_color=MUTED)
         frame.pack(padx=1, pady=1, fill="both", expand=True)
         current = self._var.get()
-        for value in self._values:
+        self._option_widgets = []
+        start_idx = self._current_index()
+        for i, value in enumerate(self._values):
             selected = value == current
-            ctk.CTkButton(
+            btn = ctk.CTkButton(
                 frame, text=value, anchor="w", height=30, corner_radius=6,
                 fg_color=ACCENT_SOFT if selected else "transparent",
                 hover_color=INSET, text_color=ACCENT if selected else INK_SOFT,
                 font=self._app._f(12),
-                command=lambda v=value: self._choose(v)).pack(fill="x", padx=2, pady=1)
+                command=lambda v=value: self._choose(v))
+            btn.pack(fill="x", padx=2, pady=1)
+            self._option_widgets.append(btn)
         popup.wm_geometry(f"{self._width}x{height + 2}+{x}+{y}")
         popup.bind("<Escape>", lambda _e: self._close())
         self._popup = popup
         self._chevron.configure(text="\u25b4")
         self._click_bind = self._app.bind("<Button-1>", self._on_global_click, add="+")
+        self._key_bind = self._app.bind("<KeyPress>", self._on_popup_key, add="+")
+        self._highlight_option(start_idx)
+        popup.focus_force()
 
     def _choose(self, value: str) -> None:
         self._var.set(value)
@@ -205,6 +269,14 @@ class ScrollableSelect(ctk.CTkFrame):
             except tk.TclError:
                 pass
             self._click_bind = None
+        if self._key_bind is not None:
+            try:
+                self._app.unbind("<KeyPress>", self._key_bind)
+            except tk.TclError:
+                pass
+            self._key_bind = None
+        self._option_widgets = []
+        self._highlight_idx = -1
         if self._popup is not None:
             self._popup.destroy()
             self._popup = None
@@ -240,12 +312,14 @@ class WhatsAppInviterApp(ctk.CTk):
         self._splash = None
         self._cur_sf = 0.0
         self._cur_ff = 0.0
+        self._reduced_motion = bool(self.settings.get("reduced_motion", os_prefers_reduced_motion()))
+        self._file_tooltip: Optional[_ToolTip] = None
 
         self.configure(fg_color=BG)
         self._build_ui()
         self._apply_settings_to_ui()
         self._show_page(0)
-        if splash:
+        if splash and not self._reduced_motion:
             self._build_splash()
 
     # ------------------------------------------------------------------ #
@@ -256,13 +330,25 @@ class WhatsAppInviterApp(ctk.CTk):
         if job is not None:
             try:
                 self.after_cancel(job)
-            except Exception:
+            except tk.TclError:
                 pass
+
+    @property
+    def reduced_motion(self) -> bool:
+        return self._reduced_motion
 
     def _animate(self, key: str, duration_ms: int, step: Callable[[float], None],
                  done: Optional[Callable[[], None]] = None, fps: int = 60) -> None:
         """Run an eased (ease-out-quart) tween, cancelling any prior run for `key`."""
         self._cancel_anim(key)
+        if self._reduced_motion:
+            try:
+                step(1.0)
+            except tk.TclError:
+                return
+            if done:
+                done()
+            return
         start = time.perf_counter()
         interval = max(1, int(1000 / fps))
 
@@ -272,7 +358,7 @@ class WhatsAppInviterApp(ctk.CTk):
             eased = 1 - (1 - t) ** 4
             try:
                 step(eased)
-            except Exception:
+            except tk.TclError:
                 self._anim_jobs.pop(key, None)
                 return
             if t < 1:
@@ -358,7 +444,8 @@ class WhatsAppInviterApp(ctk.CTk):
         rule.grid(row=2, column=0, sticky="nse")
 
     def _make_step(self, parent, grid_row: int, idx: int, title: str, sub: str) -> dict:
-        row = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=8)
+        row = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=8,
+                           border_width=0, border_color=FOCUS_RING)
         row.grid(row=grid_row, column=0, sticky="ew", padx=(18, 14), pady=2)
         row.grid_columnconfigure(1, weight=1)
 
@@ -372,15 +459,41 @@ class WhatsAppInviterApp(ctk.CTk):
         sub_lbl = ctk.CTkLabel(row, text=sub, font=self._f(11), text_color=FAINT, anchor="w")
         sub_lbl.grid(row=1, column=1, sticky="w", pady=(0, 8))
 
+        nav_btn = ctk.CTkButton(
+            row, text="", width=10, height=10, corner_radius=8,
+            fg_color="transparent", hover_color=SURFACE, border_width=0,
+            command=lambda i=idx: self._show_page(i))
+        nav_btn.place(relx=0, rely=0, relwidth=1, relheight=1)
+        nav_btn.lower()
+
         step = {"row": row, "accent": accent, "title": title_lbl, "sub": sub_lbl,
-                "idx": idx, "active": False}
+                "nav_btn": nav_btn, "idx": idx, "active": False, "focused": False}
+
+        def activate(_event=None, page_idx=idx):
+            self._show_page(page_idx)
+            return "break"
+
+        def focus_in(_event=None, s=step):
+            s["focused"] = True
+            if not s["active"]:
+                row.configure(border_width=2)
+
+        def focus_out(_event=None, s=step):
+            s["focused"] = False
+            row.configure(border_width=0)
+
+        nav_btn.bind("<Return>", activate)
+        nav_btn.bind("<space>", activate)
+        nav_btn.bind("<FocusIn>", focus_in)
+        nav_btn.bind("<FocusOut>", focus_out)
+
         for w in (row, accent, title_lbl, sub_lbl):
             w.bind("<Button-1>", lambda _e, i=idx: self._show_page(i))
             w.bind("<Enter>", lambda _e, s=step: self._hover_step(s, True))
             w.bind("<Leave>", lambda _e, s=step: self._hover_step(s, False))
             try:
                 w.configure(cursor="hand2")
-            except Exception:
+            except (tk.TclError, AttributeError):
                 pass
         return step
 
@@ -513,23 +626,41 @@ class WhatsAppInviterApp(ctk.CTk):
             dropdown_fg_color=SURFACE, dropdown_text_color=INK_SOFT,
             dropdown_hover_color=INSET, dynamic_resizing=False, width=width)
 
-    def _entry(self, parent, var, width):
-        return ctk.CTkEntry(parent, textvariable=var, width=width, height=34,
-                            corner_radius=8, fg_color=INSET, border_width=0,
-                            text_color=INK, font=self._f(13))
+    def _entry(self, parent, var, width, *, validator: Optional[Callable[[], bool]] = None):
+        entry = ctk.CTkEntry(parent, textvariable=var, width=width, height=34,
+                             corner_radius=8, fg_color=INSET, border_width=2,
+                             border_color=INSET, text_color=INK, font=self._f(13))
+        if validator is not None:
+            def validate(_event=None):
+                ok = validator()
+                entry.configure(border_color=INSET if ok else WARN)
+                return ok
+
+            entry.bind("<FocusOut>", validate)
+            var.trace_add("write", lambda *_: entry.configure(border_color=INSET))
+        return entry
 
     def _primary_btn(self, parent, text, command, width=170):
-        return ctk.CTkButton(parent, text=text, command=command, width=width, height=40,
-                             corner_radius=9, fg_color=ACCENT, hover_color=ACCENT_HOVER,
-                             text_color="#FBFAF7", font=self._f(13, "bold"))
+        btn = ctk.CTkButton(parent, text=text, command=command, width=width, height=40,
+                            corner_radius=9, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                            text_color=ON_ACCENT, font=self._f(13, "bold"),
+                            border_width=0, border_color=FOCUS_RING)
+        btn.bind("<Return>", lambda _e: (command(), "break"))
+        btn.bind("<FocusIn>", lambda _e: btn.configure(border_width=2))
+        btn.bind("<FocusOut>", lambda _e: btn.configure(border_width=0))
+        return btn
 
     def _ghost_btn(self, parent, text, command, width=120, accent=False):
         edge = ACCENT if accent else FAINT
         txt = ACCENT if accent else INK_SOFT
-        return ctk.CTkButton(parent, text=text, command=command, width=width, height=40,
-                             corner_radius=9, fg_color="transparent", border_width=1,
-                             border_color=edge, text_color=txt, hover_color=INSET,
-                             font=self._f(13))
+        btn = ctk.CTkButton(parent, text=text, command=command, width=width, height=40,
+                            corner_radius=9, fg_color="transparent", border_width=1,
+                            border_color=edge, text_color=txt, hover_color=INSET,
+                            font=self._f(13))
+        btn.bind("<Return>", lambda _e: (command(), "break"))
+        btn.bind("<FocusIn>", lambda _e: btn.configure(border_width=2, border_color=FOCUS_RING))
+        btn.bind("<FocusOut>", lambda _e: btn.configure(border_width=1, border_color=edge))
+        return btn
 
     # ------------------------------------------------------------------ #
     #  Page 1 - Import
@@ -550,8 +681,8 @@ class WhatsAppInviterApp(ctk.CTk):
                             border_width=1, border_color=HAIRLINE)
         drop.grid(row=2, column=0, sticky="ew")
         drop.grid_columnconfigure(0, weight=1)
-        self.file_label = ctk.CTkLabel(drop, text="Nog geen bestand gekozen", anchor="w",
-                                       font=self._f(13), text_color=MUTED)
+        self.file_label = ctk.CTkLabel(drop, text="Kies een Excel-bestand om te beginnen",
+                                       anchor="w", font=self._f(13), text_color=MUTED)
         self.file_label.grid(row=0, column=0, padx=18, pady=15, sticky="ew")
         ctk.CTkButton(drop, text="Bladeren", command=self._pick_excel, width=120, height=34,
                       corner_radius=8, fg_color=INSET, hover_color=HAIRLINE,
@@ -602,7 +733,13 @@ class WhatsAppInviterApp(ctk.CTk):
             "Voor Nederlandse nummers meestal +31. 06-nummers worden automatisch omgezet."
         ).grid(row=3, column=0, padx=(0, 20), pady=8, sticky="w")
         self.country_code_var = ctk.StringVar(value="+31")
-        self._entry(cols, self.country_code_var, 88).grid(row=3, column=1, pady=8, sticky="w")
+
+        def _validate_country_code() -> bool:
+            value = self.country_code_var.get().strip()
+            return bool(value) and value.startswith("+") and value[1:].isdigit()
+
+        self._entry(cols, self.country_code_var, 88, validator=_validate_country_code).grid(
+            row=3, column=1, pady=8, sticky="w")
         self.country_code_var.trace_add("write", lambda *_: self._refresh_contacts())
 
         result = ctk.CTkFrame(page, fg_color="transparent")
@@ -610,7 +747,7 @@ class WhatsAppInviterApp(ctk.CTk):
         self.count_number = ctk.CTkLabel(result, text="0", font=self._f(15, "bold"),
                                          text_color=INK)
         self.count_number.grid(row=0, column=0, padx=(0, 7))
-        self.contact_count_label = ctk.CTkLabel(result, text="geldige telefoonnummers gevonden",
+        self.contact_count_label = ctk.CTkLabel(result, text="importeer een Excel-bestand",
                                                 font=self._f(13), text_color=MUTED)
         self.contact_count_label.grid(row=0, column=1, sticky="w")
 
@@ -625,10 +762,9 @@ class WhatsAppInviterApp(ctk.CTk):
     # ------------------------------------------------------------------ #
     def _build_page_message(self, parent) -> ctk.CTkFrame:
         outer = ctk.CTkFrame(parent, fg_color="transparent")
-        page = ctk.CTkFrame(outer, fg_color="transparent")
-        page.pack(fill="both", expand=True, padx=46, pady=(32, 18))
+        page = ctk.CTkScrollableFrame(outer, fg_color="transparent")
+        page.pack(fill="both", expand=True, padx=(46, 40), pady=(32, 18))
         page.grid_columnconfigure(0, weight=1)
-        page.grid_rowconfigure(3, weight=1)
 
         self._page_heading(page, "Stap 2 van 3", "Bericht",
                            "Schrijf je uitnodiging. Het voorbeeld werkt mee terwijl je typt."
@@ -683,8 +819,8 @@ class WhatsAppInviterApp(ctk.CTk):
     # ------------------------------------------------------------------ #
     def _build_page_send(self, parent) -> ctk.CTkFrame:
         outer = ctk.CTkFrame(parent, fg_color="transparent")
-        page = ctk.CTkFrame(outer, fg_color="transparent")
-        page.pack(fill="both", expand=True, padx=46, pady=(32, 18))
+        page = ctk.CTkScrollableFrame(outer, fg_color="transparent")
+        page.pack(fill="both", expand=True, padx=(46, 40), pady=(32, 18))
         page.grid_columnconfigure(0, weight=1)
 
         self._page_heading(page, "Stap 3 van 3", "Versturen",
@@ -759,7 +895,7 @@ class WhatsAppInviterApp(ctk.CTk):
         def _check(parent, text, var, command=None):
             return ctk.CTkCheckBox(parent, text=text, variable=var, command=command,
                                    font=self._f(13), text_color=INK_SOFT, fg_color=ACCENT,
-                                   hover_color=ACCENT_HOVER, checkmark_color="#FBFAF7",
+                                   hover_color=ACCENT_HOVER, checkmark_color=ON_ACCENT,
                                    corner_radius=4, border_color=FAINT, border_width=2,
                                    checkbox_width=20, checkbox_height=20)
 
@@ -779,12 +915,28 @@ class WhatsAppInviterApp(ctk.CTk):
         self.mark_sent_var = ctk.BooleanVar(value=True)
         _opt_check("Vink af in Excel na verzenden", self.mark_sent_var,
                    "Zet de verzonden-kolom op TRUE na afloop, zodat je de volgende keer verder kunt.")
+        self.reduced_motion_var = ctk.BooleanVar(value=self._reduced_motion)
+        _opt_check(
+            "Verminder beweging",
+            self.reduced_motion_var,
+            "Schakel animaties en het startscherm uit. Volgt standaard de Windows-instelling.",
+            command=self._on_reduced_motion_changed,
+        )
 
         wait_row = ctk.CTkFrame(self._opts_body, fg_color="transparent")
         wait_row.pack(anchor="w", pady=(8, 4), fill="x")
         self._field_label(wait_row, "Wachttijd (sec)").pack(side="left")
         self.wait_time_var = ctk.StringVar(value="15")
-        self._entry(wait_row, self.wait_time_var, 66).pack(side="left", padx=(12, 0))
+
+        def _validate_wait_time() -> bool:
+            try:
+                value = int(self.wait_time_var.get().strip())
+                return value >= 5
+            except ValueError:
+                return False
+
+        self._entry(wait_row, self.wait_time_var, 66, validator=_validate_wait_time).pack(
+            side="left", padx=(12, 0))
         self._info_icon(
             wait_row,
             "Pauze tussen berichten om WhatsApp niet te overbelasten (minimaal 5 seconden)."
@@ -797,8 +949,7 @@ class WhatsAppInviterApp(ctk.CTk):
                                       font=self._mono(12), fg_color=SURFACE,
                                       text_color=INK_SOFT, border_width=1,
                                       border_color=HAIRLINE, scrollbar_button_color=FAINT)
-        self.log_box.grid(row=8, column=0, sticky="nsew")
-        page.grid_rowconfigure(8, weight=1)
+        self.log_box.grid(row=8, column=0, sticky="ew")
         self._log_placeholder = True
         self._show_log_placeholder()
         return outer
@@ -921,7 +1072,7 @@ class WhatsAppInviterApp(ctk.CTk):
         self._place_active()
         self._active_page.tkraise()
 
-        def step(e):
+        def slide(e):
             self._page_dx = int(round(24 * (1 - e)))
             self._place_active()
 
@@ -929,14 +1080,17 @@ class WhatsAppInviterApp(ctk.CTk):
             self._page_dx = 0
             self._place_active()
 
-        self._animate("page", 240, step, done)
+        self._animate("page", 240, slide, done)
 
-        for step in self._steps:
-            active = step["idx"] == index
-            step["active"] = active
-            step["row"].configure(fg_color=SURFACE if active else "transparent")
-            step["accent"].configure(fg_color=ACCENT if active else "transparent")
-            step["title"].configure(text_color=INK if active else MUTED)
+        for nav_step in self._steps:
+            active = nav_step["idx"] == index
+            nav_step["active"] = active
+            nav_step["row"].configure(
+                fg_color=SURFACE if active else "transparent",
+                border_width=0 if active or not nav_step.get("focused") else 2,
+            )
+            nav_step["accent"].configure(fg_color=ACCENT if active else "transparent")
+            nav_step["title"].configure(text_color=INK if active else MUTED)
 
     def _set_status(self, text: str, color=None) -> None:
         self.status_label.configure(text=text)
@@ -953,6 +1107,9 @@ class WhatsAppInviterApp(ctk.CTk):
         self.confirm_each_var.set(self.settings.get("confirm_each", True))
         self.skip_sent_var.set(self.settings.get("skip_sent", True))
         self.mark_sent_var.set(self.settings.get("mark_sent", True))
+        self._reduced_motion = bool(self.settings.get("reduced_motion", os_prefers_reduced_motion()))
+        if hasattr(self, "reduced_motion_var"):
+            self.reduced_motion_var.set(self._reduced_motion)
         self._apply_appearance(self.settings.get("appearance", "Systeem"))
         self._update_preview()
         self._update_stats()
@@ -966,13 +1123,43 @@ class WhatsAppInviterApp(ctk.CTk):
         self._apply_appearance(label)
         self.settings["appearance"] = label
 
+    def _on_reduced_motion_changed(self) -> None:
+        self._reduced_motion = self.reduced_motion_var.get()
+        self.settings["reduced_motion"] = self._reduced_motion
+        if self._reduced_motion:
+            self._cancel_anim("pulse")
+            for key in list(self._anim_jobs):
+                self._cancel_anim(key)
+
+    def _truncate_path(self, path: Path, max_len: int = 52) -> str:
+        text = str(path)
+        if len(text) <= max_len:
+            return text
+        name = path.name
+        prefix = "\u2026"
+        parent_part = path.parent.name
+        candidate = f"{prefix}{parent_part}/{name}"
+        if len(candidate) <= max_len:
+            return candidate
+        if len(prefix) + len(name) <= max_len:
+            return f"{prefix}{name}"
+        return f"{prefix}{name[-(max_len - len(prefix)):]}"
+
+    def _set_file_label(self, path: Path) -> None:
+        display = self._truncate_path(path)
+        self.file_label.configure(text=display, text_color=INK)
+        if self._file_tooltip is not None:
+            self._file_tooltip.text = str(path)
+        else:
+            self._file_tooltip = _ToolTip(self.file_label, str(path))
+
     def _update_preview(self) -> None:
         message = self.message_box.get("1.0", "end").strip()
         if not message:
             self.preview_label.configure(text="\u2014")
             self.preview_name_label.configure(text="Voorbeeld")
             return
-        sample_name = self.contacts[0].name if self.contacts else "Jan Jansen"
+        sample_name = self.contacts[0].name if self.contacts else PREVIEW_SAMPLE_NAME
         preview = personalize(message, sample_name)
         self.preview_name_label.configure(text=sample_name)
         self.preview_label.configure(text=preview)
@@ -1055,7 +1242,7 @@ class WhatsAppInviterApp(ctk.CTk):
             return
 
         self.excel_path = Path(path)
-        self.file_label.configure(text=str(self.excel_path), text_color=INK)
+        self._set_file_label(self.excel_path)
 
         try:
             sheets = list_sheet_names(self.excel_path)
@@ -1126,7 +1313,7 @@ class WhatsAppInviterApp(ctk.CTk):
         if not self.table:
             self.contacts = []
             self.count_number.configure(text="0")
-            self.contact_count_label.configure(text="geldige telefoonnummers gevonden")
+            self.contact_count_label.configure(text="importeer een Excel-bestand")
             self._update_stats()
             return
 
@@ -1213,6 +1400,7 @@ class WhatsAppInviterApp(ctk.CTk):
         self.settings["appearance"] = self.appearance_var.get()
         self.settings["skip_sent"] = self.skip_sent_var.get()
         self.settings["mark_sent"] = self.mark_sent_var.get()
+        self.settings["reduced_motion"] = self.reduced_motion_var.get()
         self.settings["phone_column"] = self.phone_col_var.get()
         name_col = self.name_col_var.get()
         self.settings["name_column"] = "" if name_col == "(geen)" else name_col
@@ -1308,7 +1496,7 @@ class WhatsAppInviterApp(ctk.CTk):
 
     def _stop_sending(self) -> None:
         self.sender.stop()
-        self._log("Stop aangevraagd...")
+        self._log("Stop aangevraagd\u2026")
         self._stop_pulse()
         self._set_status("Stoppen\u2026", color=WARN)
 
