@@ -132,7 +132,7 @@ class WhatsAppSender:
                         contact=contact,
                         index=i + 1,
                         total=total,
-                        message="Wacht op bevestiging voor volgende bericht...",
+                        message="Wacht op bevestiging voor volgende bericht\u2026",
                     )
                 )
                 self._confirm_event.wait()
