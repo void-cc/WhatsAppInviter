@@ -118,7 +118,8 @@ func LoadSheetTable(path, sheetName string) (*SheetTable, error) {
 	}
 	defer f.Close()
 
-	if idx, _ := f.GetSheetIndex(sheetName); idx == 0 {
+	idx, err := f.GetSheetIndex(sheetName)
+	if err != nil || idx < 0 {
 		return nil, fmt.Errorf("sheet '%s' not found in workbook", sheetName)
 	}
 
