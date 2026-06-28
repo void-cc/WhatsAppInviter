@@ -17,7 +17,7 @@ a = Analysis(
     pathex=[str(project_root)],
     binaries=ctk_binaries,
     datas=[
-        (str(project_root / 'assets'), 'assets'),
+        (str(project_root.parent.parent / 'shared' / 'assets'), 'assets'),
         *ctk_datas,
     ],
     hiddenimports=[

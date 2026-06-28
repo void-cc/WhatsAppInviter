@@ -5,3 +5,13 @@ __pycache__/
 *.pyc
 *.spec.bak
 .idea/
+
+# Go / Wails
+apps/go/build/bin/
+apps/go/frontend/node_modules/
+node_modules/
+*.db
+*.db-*
+
+# WhatsApp session stores
+**/whatsapp_session/

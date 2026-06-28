@@ -2,15 +2,18 @@ name: Build binaries
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, dev/go-rewrite]
     tags: ["v*"]
   pull_request:
-    branches: [master, main]
+    branches: [master, main, dev/go-rewrite]
   workflow_dispatch:
 
 jobs:
-  build-windows:
+  build-python-windows:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/python
     steps:
       - uses: actions/checkout@v4
 
@@ -28,16 +31,19 @@ jobs:
         run: pyinstaller app.spec --noconfirm
 
       - name: Rename executable
-        run: mv dist/WhatsAppInviter.exe dist/WhatsAppInviter-windows.exe
+        run: mv dist/WhatsAppInviter.exe dist/WhatsAppInviter-python-windows.exe
 
-      - name: Upload Windows artifact
+      - name: Upload Python Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WhatsAppInviter-windows
-          path: dist/WhatsAppInviter-windows.exe
+          name: WhatsAppInviter-python-windows
+          path: apps/python/dist/WhatsAppInviter-python-windows.exe
 
-  build-macos:
+  build-python-macos:
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/python
     steps:
       - uses: actions/checkout@v4
 
@@ -55,36 +61,113 @@ jobs:
         run: pyinstaller app.spec --noconfirm
 
       - name: Zip .app bundle
-        run: ditto -c -k --keepParent dist/WhatsAppInviter.app dist/WhatsAppInviter-macOS.zip
+        run: ditto -c -k --keepParent dist/WhatsAppInviter.app dist/WhatsAppInviter-python-macOS.zip
 
-      - name: Upload macOS artifact
+      - name: Upload Python macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WhatsAppInviter-macos
-          path: dist/WhatsAppInviter-macOS.zip
+          name: WhatsAppInviter-python-macos
+          path: apps/python/dist/WhatsAppInviter-python-macOS.zip
+
+  build-go-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/go
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: apps/go/go.sum
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: apps/go/frontend
+
+      - name: Build Wails app
+        run: wails build -clean
+
+      - name: Upload Go Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhatsAppInviter-go-windows
+          path: apps/go/build/bin/WhatsAppInviter.exe
+
+  build-go-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/go
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: apps/go/go.sum
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: apps/go/frontend
+
+      - name: Build Wails app
+        run: wails build -clean
+
+      - name: Zip .app bundle
+        run: ditto -c -k --keepParent build/bin/WhatsAppInviter.app build/bin/WhatsAppInviter-go-macOS.zip
+
+      - name: Upload Go macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhatsAppInviter-go-macos
+          path: apps/go/build/bin/WhatsAppInviter-go-macOS.zip
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-windows, build-macos]
+    needs: [build-python-windows, build-python-macos, build-go-windows, build-go-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download Windows artifact
+      - name: Download Python Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: WhatsAppInviter-windows
+          name: WhatsAppInviter-python-windows
           path: artifacts
 
-      - name: Download macOS artifact
+      - name: Download Python macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: WhatsAppInviter-macos
+          name: WhatsAppInviter-python-macos
+          path: artifacts
+
+      - name: Download Go Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WhatsAppInviter-go-windows
+          path: artifacts
+
+      - name: Download Go macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WhatsAppInviter-go-macos
           path: artifacts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/WhatsAppInviter-windows.exe
-            artifacts/WhatsAppInviter-macOS.zip
+            artifacts/WhatsAppInviter-python-windows.exe
+            artifacts/WhatsAppInviter-python-macOS.zip
+            artifacts/WhatsAppInviter.exe
+            artifacts/WhatsAppInviter-go-macOS.zip

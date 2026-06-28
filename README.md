@@ -1,169 +1,97 @@
 # WhatsApp Inviter
 
-Een gebruiksvriendelijke Windows-app om ingeschreven studenten uit te nodigen via WhatsApp. Ontwikkeld voor Bio-informatica en Biomedis aan de Hogeschool Leiden.
+Een gebruiksvriendelijke app om ingeschreven studenten uit te nodigen via WhatsApp. Ontwikkeld voor Bio-informatica en Biomedis aan de Hogeschool Leiden.
 
-## Voor eindgebruikers (BM-studenten / medewerkers)
+Dit is een **monorepo** met twee implementaties:
 
-### Wat je nodig hebt
+| App | Pad | Stack | Status |
+|-----|-----|-------|--------|
+| **Python (legacy)** | [`apps/python/`](apps/python/) | customtkinter + pywhatkit | Stabiel, PyInstaller `.exe` |
+| **Go (nieuw)** | [`apps/go/`](apps/go/) | Wails + whatsmeow + excelize | Native binary, geen browser |
 
-- Windows 10 of 11
-- Google Chrome of Microsoft Edge (voor WhatsApp Web)
-- Een WhatsApp-account op je telefoon
-- Een Excel-bestand (`.xlsx`) met telefoonnummers
-
-### Installatie
-
-Download vanuit de laatste releases [Latest release](https://github.com/void-cc/WhatsAppInviter/releases/latest) WhatsAppInviter.exe voor Windows of .zip voor macOS-gebruikers
-
-Dubbelklik om te starten.
-
-> **Windows SmartScreen-waarschuwing:** Omdat het programma niet digitaal ondertekend is, kan Windows vragen "Windows heeft je pc beschermd". Klik op **Meer info** en dan **Toch uitvoeren**. Dit is normaal voor interne tools.
-
-### Eenmalig: WhatsApp Web inloggen
-
-1. Open Chrome
-2. Ga naar [web.whatsapp.com](https://web.whatsapp.com)
-3. Scan de QR-code met je telefoon
-4. Laat de browser open (of zorg dat je de volgende keer weer ingelogd bent)
-
-### Gebruik
-
-1. **Start** `WhatsAppInviter.exe`
-2. **Kies Excel-bestand** – selecteer je `.xlsx` export met studententelefoonnummers
-3. **Kies werkblad** – als het bestand meerdere tabbladen heeft kies het juiste sheet
-4. **Controleer kolommen** – de telefoonkolom wordt automatisch herkend; pas aan indien nodig
-5. **Pas het bericht aan** – bewerk de uitnodigingstekst naar wens. Gebruik `{voornaam}` of `{naam}` om het bericht per student te personaliseren; onder het tekstvak zie je live een **voorbeeld**.
-6. Klik **Opslaan als standaard** om je bericht en instellingen te bewaren voor volgende keren
-7. Optioneel: Start vanaf een andere rij als je met andere SA's de studenten heb verdeeld. (of later verder gaat)
-8. Klik **Start versturen**
-9. De app opent WhatsApp Web per student en verstuurt het bericht
-10. Met **Bevestig na elk bericht** aan: klik **Volgende** om door te gaan, of **Stop** om te stoppen
-11. Na afloop kun je met **Exporteer rapport** een CSV opslaan met wie er is aangeschreven (verzonden/mislukt).
-
-> **Thema:** rechtsboven kun je wisselen tussen **Licht**, **Donker** en **Systeem**. Je keuze wordt bewaard via *Opslaan als standaard*.
-
-> **Beweging:** onder **Opties** op het versturen-tabblad kun je **Verminder beweging** inschakelen. De app volgt standaard de Windows-toegankelijkheidsinstelling en slaat je keuze op via *Opslaan als standaard*.
-
-### Bijhouden wie al een bericht kreeg (checkbox-kolom)
-
-Heb je in je Excel een kolom als **"Bericht verzonden"** (bijvoorbeeld met Excel-vinkjes / checkboxes, die `TRUE`/`FALSE` opslaan)? Dan kun je die gebruiken:
-
-1. Kies bij **Kolommen** de **Verzonden-kolom** (wordt automatisch herkend op namen als *bericht verzonden*, *verstuurd*, *uitgenodigd*, *sent*).
-2. **Sla al verzonden over** (aan): rijen die al aangevinkt zijn (`TRUE`/`ja`/`x`/`1`) worden niet opnieuw aangeschreven. Het aantal "nog te versturen" zie je direct.
-3. **Vink af in Excel na verzenden** (aan): na afloop zet de app de checkbox op `TRUE` voor iedereen die zojuist een bericht kreeg, zodat je de volgende keer verder kunt waar je was.
-
-> Sluit het Excel-bestand in Excel voordat je verstuurt; anders kan de app de vinkjes niet terugschrijven (het bestand is dan vergrendeld). De app waarschuwt je in dat geval.
-
-### Bericht personaliseren
-
-| Placeholder  | Wordt vervangen door                              |
-| ------------ | ------------------------------------------------- |
-| `{voornaam}` | De voornaam van de student (eerste woord van de naam) |
-| `{naam}`     | De volledige naam zoals in de naamkolom           |
-
-Heeft een rij geen naam, dan wordt "student" ingevuld. Werkt hoofdletterongevoelig (`{Voornaam}` mag ook).
-
-### Excel-formaat
-
-- Bestandstype: `.xlsx` (Excel)
-- De app zoekt automatisch de tabelkop (hoef niet in cel A1 te staan)
-- Kolom met telefoonnummers wordt herkend op namen zoals: *Mobiel telefoonnummer*, *telefoon*, *gsm*, *phone*
-- Nederlandse nummers (`06-…` of `0612345678`) worden automatisch omgezet naar `+31…`
-
-### Instellingen opslaan
-
-Je bericht, landcode, kolomkeuzes en voorkeuren (thema, beweging) worden opgeslagen in:
-
-```
-%APPDATA%\WhatsAppInviter\settings.json
-```
+Gedeelde assets staan in [`shared/assets/`](shared/assets/).
 
 ---
 
-## Voor ontwikkelaars / onderhoud
+## Snel starten
 
-### Lokaal draaien (zonder exe)
+### Python-versie (bestaand)
 
 ```bash
+cd apps/python
 python -m venv venv
-venv\Scripts\activate
+venv\Scripts\activate        # Windows
 pip install -r requirements.txt
 python app.py
 ```
 
-### Windows exe bouwen
+Build: `build.bat` (Windows) of `build_mac.sh` (macOS) vanuit `apps/python/`.
 
-Dubbelklik op `build.bat` of voer uit in de projectmap:
+### Go-versie (nieuw)
 
-```bash
-build.bat
-```
-
-Output: `dist\WhatsAppInviter.exe`
-
-De build-script:
-1. Maakt een virtual environment aan
-2. Installeert alle dependencies
-3. Bouwt één standalone `.exe` met PyInstaller
-
-### macOS app bouwen
-
-> PyInstaller kan **niet** cross-compileren. Een macOS-build moet op een Mac gebeuren (niet op Windows).
-
-Op een Mac, in de projectmap:
+Vereist [Go 1.22+](https://go.dev/dl/) en [Wails v2](https://wails.io/docs/gettingstarted/installation).
 
 ```bash
-chmod +x build_mac.sh
-./build_mac.sh
+cd apps/go
+go mod tidy
+wails dev          # ontwikkeling
+wails build        # productie-binary
 ```
 
-Output: `dist/WhatsAppInviter.app`
+Build-scripts: `build.bat` / `build_mac.sh` vanuit `apps/go/`.
 
-Distribueren als zip:
+Output: `apps/go/build/bin/WhatsAppInviter.exe` (Windows) of `.app` (macOS).
 
-```bash
-ditto -c -k --keepParent dist/WhatsAppInviter.app dist/WhatsAppInviter-mac.zip
+---
+
+## Verschil tussen de twee apps
+
+| | Python | Go |
+|---|--------|-----|
+| **WhatsApp** | Browser-automatisering (WhatsApp Web + Chrome) | Direct via WhatsApp multi-device protocol (QR-koppeling) |
+| **Binary-grootte** | ~40–80 MB (PyInstaller) | ~15–25 MB (native) |
+| **Browser nodig** | Ja | Nee |
+| **Excel** | openpyxl | excelize |
+| **Instellingen** | `%APPDATA%\WhatsAppInviter\settings.json` | Zelfde pad (gedeeld) |
+
+---
+
+## Gebruikersdocumentatie
+
+Zie [`shared/docs/python.md`](shared/docs/python.md) voor de volledige handleiding (Excel-formaat, placeholders, checkbox-kolom, etc.). De Go-app volgt dezelfde workflow (3 stappen: Importeren → Bericht → Versturen).
+
+### Go-versie: WhatsApp koppelen
+
+1. Start de app
+2. Ga naar **Versturen**
+3. Klik **QR-code tonen**
+4. Scan met WhatsApp op je telefoon (Instellingen → Gekoppelde apparaten)
+5. Sessie blijft bewaard; volgende keer hoef je niet opnieuw te scannen
+
+---
+
+## Projectstructuur
+
+```
+apps/
+  python/          # customtkinter GUI + pywhatkit sender
+  go/              # Wails GUI + whatsmeow sender
+shared/
+  assets/          # default_message.txt
+  docs/            # gebruikers- en ontwikkelaarsdocs
+.github/workflows/ # CI builds voor beide apps
 ```
 
-macOS-aandachtspunten:
-- **Gatekeeper:** ongetekende apps geven "kan niet worden geopend omdat het van een niet-geïdentificeerde ontwikkelaar is". Eerste keer: rechtsklik op de app → **Open** → **Open**. (Officieel ondertekenen vereist een Apple Developer-account; buiten scope.)
-- **Rechten:** macOS vraagt om **Toegankelijkheid** en **Schermopname** (Systeeminstellingen → Privacy en beveiliging), omdat de app de browser bestuurt.
-- De build is voor de architectuur van de Mac waarop je bouwt (Apple Silicon arm64 of Intel x86_64).
+---
 
-### Automatisch bouwen via GitHub Actions
+## CI / Releases
 
-Het project bevat een workflow (`.github/workflows/build.yml`) die bij elke push naar `master`/`main` automatisch **zowel de Windows `.exe` als de macOS `.app`** bouwt:
+GitHub Actions bouwt bij push naar `master`/`main` en op tags (`v*`) **beide** apps voor Windows en macOS. Artifacts staan onder Actions; releases bevatten alle vier binaries.
 
-- Resultaten staan onder het **Actions**-tabblad, de betreffende run **Artifacts**.
-- Bij het pushen van een versietag (bijv. `v1.0.0`) wordt automatisch een **GitHub Release** aangemaakt met beide bestanden eraan gekoppeld
+---
 
-### Projectstructuur
+## Bekende beperkingen
 
-```
-app.py                  # GUI (customtkinter)
-core/
-  excel_loader.py       # Excel inlezen, kolommen detecteren
-  phone.py              # Telefoonnummer normalisatie
-  message.py            # Berichtpersonalisatie ({voornaam}/{naam})
-  sender.py             # WhatsApp versturen via pywhatkit
-  settings.py           # Instellingen opslaan in AppData (incl. thema & beweging)
-  report.py             # CSV-rapport van verzendresultaten
-assets/
-  default_message.txt   # Standaard uitnodigingstekst
-build.bat               # Eén-klik build (Windows)
-build_mac.sh            # Eén-klik build (macOS)
-app.spec                # PyInstaller configuratie (Windows + macOS)
-.github/workflows/build.yml  # Automatische builds (Windows + macOS)
-requirements.txt
-```
-
-### Bekende beperkingen
-
-- Berichten worden verstuurd via **WhatsApp Web automatisering** (zelfde methode als het oude script). Dit vereist een ingelogde browsersessie en kan af en toe traag of gevoelig zijn voor browser-updates.
+- **whatsmeow** is een unofficial WhatsApp client library (zelfde grijze zone als pywhatkit, maar betrouwbaarder dan browser-automatisering).
 - WhatsApp kan bulk-berichten beperken; gebruik **Bevestig na elk bericht** voor controle.
-- Alleen `.xlsx` wordt ondersteund (geen `.csv` in de GUI; het oude `main.py` ondersteunt nog wel CSV).
-
-### Oude script
-Het oude script is te vinden in de SA teams map van BI
-
-Gebruik `app.py` / `WhatsAppInviter.exe` voor dagelijks gebruik.
+- Alleen `.xlsx` wordt ondersteund.

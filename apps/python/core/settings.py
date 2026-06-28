@@ -35,15 +35,24 @@ def os_prefers_reduced_motion() -> bool:
     return False
 
 
+def _repo_root() -> Path:
+    """Monorepo root (apps/python/core -> ../..)."""
+    return Path(__file__).resolve().parent.parent.parent
+
+
 def _bundled_default_message() -> str:
-    """Load shipped default message from assets."""
+    """Load shipped default message from shared assets."""
     if getattr(sys, "frozen", False):
-        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        candidates = [Path(sys._MEIPASS) / "assets"]  # type: ignore[attr-defined]
     else:
-        base = Path(__file__).resolve().parent.parent
-    path = base / "assets" / "default_message.txt"
-    if path.exists():
-        return path.read_text(encoding="utf-8")
+        candidates = [
+            _repo_root() / "shared" / "assets",
+            Path(__file__).resolve().parent.parent / "assets",
+        ]
+    for base in candidates:
+        path = base / "default_message.txt"
+        if path.exists():
+            return path.read_text(encoding="utf-8")
     return ""
 
 
