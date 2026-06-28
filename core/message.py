@@ -10,7 +10,8 @@ if TYPE_CHECKING:
 
 PLACEHOLDER_HINT = "Gebruik {voornaam} of {naam} om het bericht te personaliseren."
 
-_FALLBACK_NAME = "student"
+FALLBACK_NAME = "student"
+PREVIEW_SAMPLE_NAME = "Jan Jansen"
 
 
 def first_name(full_name: str) -> str:
@@ -35,10 +36,10 @@ def personalize(message: str, name: str) -> str:
     fname = first_name(full)
 
     def _name_repl(_match: re.Match) -> str:
-        return full or _FALLBACK_NAME
+        return full or FALLBACK_NAME
 
     def _first_repl(_match: re.Match) -> str:
-        return fname or full or _FALLBACK_NAME
+        return fname or full or FALLBACK_NAME
 
     result = re.sub(r"\{\s*voornaam\s*\}", _first_repl, message, flags=re.IGNORECASE)
     result = re.sub(r"\{\s*naam\s*\}", _name_repl, result, flags=re.IGNORECASE)

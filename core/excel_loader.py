@@ -10,6 +10,7 @@ from typing import Optional
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
+from core.message import FALLBACK_NAME
 from core.phone import is_valid_phone, normalize_phone
 
 PHONE_HEADER_PATTERNS = [
@@ -221,11 +222,10 @@ def extract_contacts(
             continue
         seen_phones.add(normalized)
 
-        name = ""
         if name_column:
-            name = row.get(name_column, "") or "Onbekende student"
+            name = row.get(name_column, "") or FALLBACK_NAME
         else:
-            name = "Onbekende student"
+            name = FALLBACK_NAME
 
         already_sent = parse_bool(row.get(sent_column, "")) if sent_column else False
 
