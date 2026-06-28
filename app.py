@@ -291,7 +291,7 @@ class WhatsAppInviterApp(ctk.CTk):
         super().__init__()
         self.title("WhatsApp Inviter - Hogeschool Leiden")
         self.geometry("1080x820")
-        self.minsize(960, 700)
+        self.minsize(760, 700)
 
         self.settings = load_settings()
         self.excel_path: Optional[Path] = None
@@ -423,14 +423,14 @@ class WhatsAppInviterApp(ctk.CTk):
         ).pack()
 
     def _build_sidebar(self) -> None:
-        sidebar = ctk.CTkFrame(self, fg_color="transparent", width=230)
+        sidebar = ctk.CTkFrame(self, fg_color="transparent", width=170)
         sidebar.grid(row=2, column=0, sticky="nsw")
         sidebar.grid_propagate(False)
         sidebar.grid_columnconfigure(0, weight=1)
         sidebar.grid_rowconfigure(99, weight=1)
 
         ctk.CTkLabel(sidebar, text="Stappen", font=self._f(12, "bold"), text_color=FAINT,
-                     anchor="w").grid(row=0, column=0, padx=(30, 0), pady=(28, 12), sticky="w")
+                     anchor="w").grid(row=0, column=0, padx=(15, 0), pady=(15, 12), sticky="w")
 
         steps = [
             ("Importeren", "Excel & kolommen"),
