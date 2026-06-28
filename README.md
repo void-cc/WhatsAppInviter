@@ -13,7 +13,7 @@ Een gebruiksvriendelijke Windows-app om ingeschreven studenten uit te nodigen vi
 
 ### Installatie
 
-Download vanuit de laatste releases [Latest release](https://github.com/void-cc/WhatsAppInviter/releases/latest) WhatsAppInviter.exe voor windows of .zip voor macOS gebruikers
+Download vanuit de laatste releases [Latest release](https://github.com/void-cc/WhatsAppInviter/releases/latest) WhatsAppInviter.exe voor Windows of .zip voor macOS-gebruikers
 
 Dubbelklik om te starten.
 
@@ -42,6 +42,8 @@ Dubbelklik om te starten.
 
 > **Thema:** rechtsboven kun je wisselen tussen **Licht**, **Donker** en **Systeem**. Je keuze wordt bewaard via *Opslaan als standaard*.
 
+> **Beweging:** onder **Opties** op het versturen-tabblad kun je **Verminder beweging** inschakelen. De app volgt standaard de Windows-toegankelijkheidsinstelling en slaat je keuze op via *Opslaan als standaard*.
+
 ### Bijhouden wie al een bericht kreeg (checkbox-kolom)
 
 Heb je in je Excel een kolom als **"Bericht verzonden"** (bijvoorbeeld met Excel-vinkjes / checkboxes, die `TRUE`/`FALSE` opslaan)? Dan kun je die gebruiken:
@@ -66,11 +68,11 @@ Heeft een rij geen naam, dan wordt "student" ingevuld. Werkt hoofdletterongevoel
 - Bestandstype: `.xlsx` (Excel)
 - De app zoekt automatisch de tabelkop (hoef niet in cel A1 te staan)
 - Kolom met telefoonnummers wordt herkend op namen zoals: *Mobiel telefoonnummer*, *telefoon*, *gsm*, *phone*
-- Nederlandse nummers (`06-...` of `0612345678`) worden automatisch omgezet naar `+31...`
+- Nederlandse nummers (`06-…` of `0612345678`) worden automatisch omgezet naar `+31…`
 
 ### Instellingen opslaan
 
-Je bericht, landcode en kolomkeuzes worden opgeslagen in:
+Je bericht, landcode, kolomkeuzes en voorkeuren (thema, beweging) worden opgeslagen in:
 
 ```
 %APPDATA%\WhatsAppInviter\settings.json
@@ -144,7 +146,7 @@ core/
   phone.py              # Telefoonnummer normalisatie
   message.py            # Berichtpersonalisatie ({voornaam}/{naam})
   sender.py             # WhatsApp versturen via pywhatkit
-  settings.py           # Instellingen opslaan in AppData
+  settings.py           # Instellingen opslaan in AppData (incl. thema & beweging)
   report.py             # CSV-rapport van verzendresultaten
 assets/
   default_message.txt   # Standaard uitnodigingstekst
