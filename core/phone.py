@@ -5,13 +5,13 @@ from typing import Optional
 
 
 def normalize_phone(raw: str, country_code: str = "+31") -> Optional[str]:
-    """
-    Normalize a phone number to international format.
+    """Normalize a phone number to international format.
 
     - Strips spaces, dashes, and parentheses
     - Leading 0 -> country code (e.g. 0612345678 -> +31612345678)
+    - Leading 00 -> international prefix (e.g. 0031... -> +31...)
     - No leading + -> prepend country code
-  """
+    """
     if not raw or not str(raw).strip():
         return None
 
@@ -34,6 +34,9 @@ def normalize_phone(raw: str, country_code: str = "+31") -> Optional[str]:
 
     if digits.startswith("+"):
         return digits
+
+    if digits.startswith("00"):
+        return "+" + digits[2:]
 
     if digits.startswith("0"):
         return cc + digits[1:]
