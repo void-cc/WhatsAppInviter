@@ -212,6 +212,9 @@ class ScrollableSelect(ctk.CTkFrame):
         self.update_idletasks()
         x = self._button.winfo_rootx()
         y = self._button.winfo_rooty() + self._button.winfo_height() + 4
+        width = self._button.winfo_width()
+        if width <= 1:
+            width = self._width
         rows = max(1, min(len(self._values), self._max_visible))
         height = rows * 32 + 6
         popup = tk.Toplevel(self)
@@ -222,7 +225,7 @@ class ScrollableSelect(ctk.CTkFrame):
             pass
         popup.configure(background=_resolve(FAINT))
         frame = ctk.CTkScrollableFrame(
-            popup, width=self._width - 24, height=height, fg_color=SURFACE,
+            popup, width=width - 24, height=height, fg_color=SURFACE,
             corner_radius=0, scrollbar_button_color=FAINT,
             scrollbar_button_hover_color=MUTED)
         frame.pack(padx=1, pady=1, fill="both", expand=True)
@@ -239,7 +242,7 @@ class ScrollableSelect(ctk.CTkFrame):
                 command=lambda v=value: self._choose(v))
             btn.pack(fill="x", padx=2, pady=1)
             self._option_widgets.append(btn)
-        popup.wm_geometry(f"{self._width}x{height + 2}+{x}+{y}")
+        popup.wm_geometry(f"{width}x{height + 2}+{x}+{y}")
         popup.bind("<Escape>", lambda _e: self._close())
         self._popup = popup
         self._chevron.configure(text="\u25b4")
@@ -291,7 +294,8 @@ class WhatsAppInviterApp(ctk.CTk):
         super().__init__()
         self.title("WhatsApp Inviter - Hogeschool Leiden")
         self.geometry("1080x820")
-        self.minsize(760, 700)
+        # Stays usable when docked to ~2/5 of the screen next to WhatsApp Web.
+        self.minsize(560, 600)
 
         self.settings = load_settings()
         self.excel_path: Optional[Path] = None
@@ -314,6 +318,8 @@ class WhatsAppInviterApp(ctk.CTk):
         self._cur_ff = 0.0
         self._reduced_motion = bool(self.settings.get("reduced_motion", os_prefers_reduced_motion()))
         self._file_tooltip: Optional[_ToolTip] = None
+        self._fluid_labels: list[tuple] = []
+        self._last_width = 0
 
         self.configure(fg_color=BG)
         self._build_ui()
@@ -392,6 +398,43 @@ class WhatsAppInviterApp(ctk.CTk):
         self._build_content()
         self._build_footer()
 
+        self.bind("<Configure>", self._on_root_configure, add="+")
+
+    def _register_fluid_label(self, label, source, margin: int, minimum: int = 200) -> None:
+        """Track a label whose wraplength should follow `source`'s width on resize."""
+        self._fluid_labels.append((label, source, margin, minimum))
+
+    def _on_root_configure(self, event=None) -> None:
+        if event is not None and event.widget is not self:
+            return
+        width = self.winfo_width()
+        if width == self._last_width:
+            return
+        self._last_width = width
+        self._refresh_fluid_labels()
+
+        sub = getattr(self, "header_sub", None)
+        if sub is not None:
+            try:
+                scaling = ctk.ScalingTracker.get_window_scaling(self)
+            except Exception:
+                scaling = 1.0
+            logical_width = width / (scaling or 1.0)
+            full = "Hogeschool Leiden  ·  studenten uitnodigen via WhatsApp"
+            compact = "Hogeschool Leiden"
+            try:
+                sub.configure(text=compact if logical_width < 720 else full)
+            except tk.TclError:
+                pass
+
+    def _refresh_fluid_labels(self) -> None:
+        for label, source, margin, minimum in self._fluid_labels:
+            try:
+                avail = source.winfo_width() - margin
+            except tk.TclError:
+                continue
+            label.configure(wraplength=max(minimum, avail))
+
     def _hairline(self, parent, row: int, column: int = 0, columnspan: int = 1,
                   pady=0) -> None:
         line = ctk.CTkFrame(parent, height=1, fg_color=HAIRLINE, corner_radius=0)
@@ -404,14 +447,16 @@ class WhatsAppInviterApp(ctk.CTk):
         header.grid_propagate(False)
 
         mark = ctk.CTkFrame(header, fg_color="transparent")
-        mark.grid(row=0, column=0, padx=(34, 0), pady=18, sticky="w")
+        mark.grid(row=0, column=0, padx=(26, 0), pady=18, sticky="w")
         ctk.CTkLabel(mark, text="WhatsApp Inviter", font=self._f(19, "bold"),
                      text_color=INK).pack(anchor="w")
-        ctk.CTkLabel(mark, text="Hogeschool Leiden  ·  studenten uitnodigen via WhatsApp",
-                     font=self._f(12), text_color=MUTED).pack(anchor="w", pady=(2, 0))
+        self.header_sub = ctk.CTkLabel(
+            mark, text="Hogeschool Leiden  ·  studenten uitnodigen via WhatsApp",
+            font=self._f(12), text_color=MUTED)
+        self.header_sub.pack(anchor="w", pady=(2, 0))
 
         theme = ctk.CTkFrame(header, fg_color="transparent")
-        theme.grid(row=0, column=1, padx=34, pady=18, sticky="e")
+        theme.grid(row=0, column=1, padx=(12, 26), pady=18, sticky="e")
         self.appearance_var = ctk.StringVar(value=self.settings.get("appearance", "Systeem"))
         ctk.CTkSegmentedButton(
             theme, values=["Licht", "Donker", "Systeem"], variable=self.appearance_var,
@@ -531,10 +576,10 @@ class WhatsAppInviterApp(ctk.CTk):
 
         self.status_dot = ctk.CTkLabel(footer, text="\u25cf", text_color=FAINT,
                                        font=self._f(11))
-        self.status_dot.grid(row=0, column=0, padx=(36, 8), pady=13)
+        self.status_dot.grid(row=0, column=0, padx=(26, 8), pady=13)
         self.status_label = ctk.CTkLabel(footer, text="Klaar om te beginnen",
                                          font=self._f(12), text_color=MUTED, anchor="w")
-        self.status_label.grid(row=0, column=1, sticky="w", pady=13, padx=(0, 36))
+        self.status_label.grid(row=0, column=1, sticky="w", pady=13, padx=(0, 26))
 
     # ------------------------------------------------------------------ #
     #  Launch splash
@@ -668,7 +713,7 @@ class WhatsAppInviterApp(ctk.CTk):
     def _build_page_import(self, parent) -> ctk.CTkFrame:
         outer = ctk.CTkFrame(parent, fg_color="transparent")
         page = ctk.CTkScrollableFrame(outer, fg_color="transparent")
-        page.pack(fill="both", expand=True, padx=(46, 40), pady=(30, 16))
+        page.pack(fill="both", expand=True, padx=(28, 22), pady=(30, 16))
         page.grid_columnconfigure(0, weight=1)
 
         self._page_heading(page, "Stap 1 van 3", "Importeren",
@@ -690,13 +735,14 @@ class WhatsAppInviterApp(ctk.CTk):
                                                                   padx=9, pady=9)
 
         sheet_row = ctk.CTkFrame(page, fg_color="transparent")
-        sheet_row.grid(row=3, column=0, sticky="w", pady=(14, 0))
-        sheet_row.grid_columnconfigure(0, minsize=170)
+        sheet_row.grid(row=3, column=0, sticky="ew", pady=(14, 0))
+        sheet_row.grid_columnconfigure(0, minsize=130)
+        sheet_row.grid_columnconfigure(1, weight=1)
         self._field_label(sheet_row, "Werkblad").grid(row=0, column=0, sticky="w")
         self.sheet_var = ctk.StringVar(value="")
         self.sheet_menu = self._menu(sheet_row, self.sheet_var, [""],
                                      command=self._on_sheet_changed, width=320)
-        self.sheet_menu.grid(row=0, column=1, sticky="w")
+        self.sheet_menu.grid(row=0, column=1, sticky="ew")
 
         self._section_label(page, "Kolommen").grid(row=4, column=0, sticky="w",
                                                     pady=(38, 2))
@@ -706,7 +752,7 @@ class WhatsAppInviterApp(ctk.CTk):
 
         cols = ctk.CTkFrame(page, fg_color="transparent")
         cols.grid(row=6, column=0, sticky="ew")
-        cols.grid_columnconfigure(0, minsize=170)
+        cols.grid_columnconfigure(0, minsize=130)
         cols.grid_columnconfigure(1, weight=1)
         fields = [
             ("Telefoonkolom", "phone_col_var", [""],
@@ -723,15 +769,15 @@ class WhatsAppInviterApp(ctk.CTk):
                    "sent_col_var": self.sent_col_var}
         for i, (label, attr, values, hint) in enumerate(fields):
             self._field_label_info(cols, label, hint).grid(
-                row=i, column=0, padx=(0, 20), pady=8, sticky="w")
+                row=i, column=0, padx=(0, 16), pady=8, sticky="w")
             menu = self._menu(cols, var_map[attr], values)
-            menu.grid(row=i, column=1, pady=8, sticky="w")
+            menu.grid(row=i, column=1, pady=8, sticky="ew")
             setattr(self, attr.replace("_var", "_menu"), menu)
 
         self._field_label_info(
             cols, "Landcode",
             "Voor Nederlandse nummers meestal +31. 06-nummers worden automatisch omgezet."
-        ).grid(row=3, column=0, padx=(0, 20), pady=8, sticky="w")
+        ).grid(row=3, column=0, padx=(0, 16), pady=8, sticky="w")
         self.country_code_var = ctk.StringVar(value="+31")
 
         def _validate_country_code() -> bool:
@@ -763,7 +809,7 @@ class WhatsAppInviterApp(ctk.CTk):
     def _build_page_message(self, parent) -> ctk.CTkFrame:
         outer = ctk.CTkFrame(parent, fg_color="transparent")
         page = ctk.CTkScrollableFrame(outer, fg_color="transparent")
-        page.pack(fill="both", expand=True, padx=(46, 40), pady=(32, 18))
+        page.pack(fill="both", expand=True, padx=(28, 22), pady=(32, 18))
         page.grid_columnconfigure(0, weight=1)
 
         self._page_heading(page, "Stap 2 van 3", "Bericht",
@@ -803,15 +849,16 @@ class WhatsAppInviterApp(ctk.CTk):
         self.preview_label = ctk.CTkLabel(bubble, text="\u2014", anchor="w", justify="left",
                                           wraplength=540, font=self._f(13), text_color=INK)
         self.preview_label.pack(anchor="w", padx=15, pady=(2, 12))
+        self._register_fluid_label(self.preview_label, chat, margin=90, minimum=180)
 
         actions = ctk.CTkFrame(page, fg_color="transparent")
         actions.grid(row=4, column=0, sticky="ew", pady=(22, 4))
-        self._ghost_btn(actions, "Terug", lambda: self._show_page(0), width=100).pack(
+        self._ghost_btn(actions, "Terug", lambda: self._show_page(0), width=92).pack(
             side="left")
         self._primary_btn(actions, "Verder naar versturen", lambda: self._show_page(2),
-                          width=200).pack(side="right")
+                          width=180).pack(side="right")
         self._ghost_btn(actions, "Opslaan als standaard", self._save_message_default,
-                        width=180, accent=True).pack(side="right", padx=(0, 10))
+                        width=160, accent=True).pack(side="right", padx=(0, 10))
         return outer
 
     # ------------------------------------------------------------------ #
@@ -820,7 +867,7 @@ class WhatsAppInviterApp(ctk.CTk):
     def _build_page_send(self, parent) -> ctk.CTkFrame:
         outer = ctk.CTkFrame(parent, fg_color="transparent")
         page = ctk.CTkScrollableFrame(outer, fg_color="transparent")
-        page.pack(fill="both", expand=True, padx=(46, 40), pady=(32, 18))
+        page.pack(fill="both", expand=True, padx=(28, 22), pady=(32, 18))
         page.grid_columnconfigure(0, weight=1)
 
         self._page_heading(page, "Stap 3 van 3", "Versturen",
@@ -832,9 +879,11 @@ class WhatsAppInviterApp(ctk.CTk):
         warn = ctk.CTkFrame(page, fg_color="transparent", corner_radius=9, border_width=1,
                             border_color=HAIRLINE)
         warn.grid(row=2, column=0, sticky="ew", pady=(18, 16))
-        ctk.CTkLabel(warn, text="Log eerst in op WhatsApp Web in Chrome of Edge voordat je start.",
-                     font=self._f(12), text_color=WARN, anchor="w", justify="left",
-                     wraplength=820).pack(anchor="w", padx=15, pady=11)
+        warn_label = ctk.CTkLabel(
+            warn, text="Log eerst in op WhatsApp Web in Chrome of Edge voordat je start.",
+            font=self._f(12), text_color=WARN, anchor="w", justify="left", wraplength=820)
+        warn_label.pack(anchor="w", padx=15, pady=11)
+        self._register_fluid_label(warn_label, warn, margin=34, minimum=200)
 
         rng = ctk.CTkFrame(page, fg_color="transparent")
         rng.grid(row=3, column=0, sticky="ew", pady=(0, 18))
@@ -848,18 +897,19 @@ class WhatsAppInviterApp(ctk.CTk):
         ).pack(side="left", padx=(8, 0))
 
         grid = ctk.CTkFrame(rng, fg_color="transparent")
-        grid.pack(anchor="w")
-        grid.grid_columnconfigure(0, minsize=52)
+        grid.pack(anchor="w", fill="x")
+        grid.grid_columnconfigure(0, minsize=46)
+        grid.grid_columnconfigure(1, weight=1)
 
         self._field_label(grid, "Van").grid(row=0, column=0, sticky="w", pady=(0, 8))
         self.start_var = ctk.StringVar(value="(begin)")
         self.start_combo = ScrollableSelect(grid, self, self.start_var, ["(begin)"], width=440)
-        self.start_combo.grid(row=0, column=1, sticky="w", pady=(0, 8))
+        self.start_combo.grid(row=0, column=1, sticky="ew", pady=(0, 8))
 
         self._field_label(grid, "t/m").grid(row=1, column=0, sticky="w")
         self.end_var = ctk.StringVar(value="(einde)")
         self.end_combo = ScrollableSelect(grid, self, self.end_var, ["(einde)"], width=440)
-        self.end_combo.grid(row=1, column=1, sticky="w")
+        self.end_combo.grid(row=1, column=1, sticky="ew")
 
         self._ghost_btn(grid, "Alles", self._reset_range, width=78).grid(
             row=0, column=2, rowspan=2, padx=(12, 0))
@@ -1071,6 +1121,7 @@ class WhatsAppInviterApp(ctk.CTk):
         self._page_dx = 24
         self._place_active()
         self._active_page.tkraise()
+        self.after_idle(self._refresh_fluid_labels)
 
         def slide(e):
             self._page_dx = int(round(24 * (1 - e)))
